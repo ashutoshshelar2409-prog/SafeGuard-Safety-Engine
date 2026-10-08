@@ -1,0 +1,8 @@
+area,latitude,longitude,crime_type,crime_count
+Downtown,12.9716,77.5946,theft,12
+Downtown,12.9720,77.5950,assault,4
+Central Park,12.9750,77.5980,harassment,8
+Market Street,12.9780,77.6010,theft,15
+Suburbs,12.9820,77.6050,vandalism,2
+Tech Corridor,12.9850,77.6100,theft,5
+University,12.9700,77.5900,burglary,3

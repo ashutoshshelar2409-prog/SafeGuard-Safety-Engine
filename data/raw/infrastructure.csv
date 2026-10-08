@@ -1,0 +1,7 @@
+area,latitude,longitude,road_condition,pedestrian_access
+Downtown,12.9716,77.5946,85,90
+Central Park,12.9750,77.5980,60,75
+Market Street,12.9780,77.6010,90,85
+Suburbs,12.9820,77.6050,70,65
+Tech Corridor,12.9850,77.6100,95,95
+University,12.9700,77.5900,80,80

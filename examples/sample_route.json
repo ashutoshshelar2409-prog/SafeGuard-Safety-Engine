@@ -1,0 +1,13 @@
+{
+  "route_id": "route_101",
+  "distance_km": 4.2,
+  "duration_minutes": 18,
+  "coordinates": [
+    { "latitude": 12.9716, "longitude": 77.5946 },
+    { "latitude": 12.9730, "longitude": 77.5960 },
+    { "latitude": 12.9750, "longitude": 77.5980 },
+    { "latitude": 12.9780, "longitude": 77.6010 },
+    { "latitude": 12.9820, "longitude": 77.6050 },
+    { "latitude": 12.9850, "longitude": 77.6100 }
+  ]
+}

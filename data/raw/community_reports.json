@@ -1,0 +1,38 @@
+[
+  {
+    "report_id": "rep_001",
+    "report_type": "streetlight_failure",
+    "latitude": 12.9720,
+    "longitude": 77.5950,
+    "severity": 2,
+    "timestamp": "2026-10-01T20:30:00Z",
+    "description": "Broken street lamp near bus stand"
+  },
+  {
+    "report_id": "rep_002",
+    "report_type": "harassment",
+    "latitude": 12.9752,
+    "longitude": 77.5982,
+    "severity": 4,
+    "timestamp": "2026-10-03T22:15:00Z",
+    "description": "Catcalling reported near park entrance"
+  },
+  {
+    "report_id": "rep_003",
+    "report_type": "suspicious_activity",
+    "latitude": 12.9785,
+    "longitude": 77.6012,
+    "severity": 3,
+    "timestamp": "2026-10-05T21:00:00Z",
+    "description": "Loitering near poorly lit alley"
+  },
+  {
+    "report_id": "rep_004",
+    "report_type": "unsafe_road",
+    "latitude": 12.9822,
+    "longitude": 77.6052,
+    "severity": 1,
+    "timestamp": "2026-10-06T18:45:00Z",
+    "description": "Deep pothole on sidewalk"
+  }
+]

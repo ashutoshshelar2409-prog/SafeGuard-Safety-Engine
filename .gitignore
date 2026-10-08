@@ -1,0 +1,9 @@
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+env/
+.env
+data/processed/*
+!data/processed/.gitkeep

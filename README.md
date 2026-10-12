@@ -1,4 +1,4 @@
-# SafeGuard — Safety Score & Data Processing Engine (Member 1)
+# SafeGuard — Safety Score & Data Processing Engine (- by Ashutosh)
 
 Welcome to **SafeGuard**, a smart contextual safety navigation system built for hackathons!
 

@@ -68,6 +68,7 @@ class OSRMProvider(RoutingProvider):
     DEFAULT_BASE_URL = "https://router.project-osrm.org"
     PROFILE_MAP = {
         "driving": "driving",
+        "car": "driving",
         "walking": "foot",
         "foot": "foot",
         "cycling": "bike",
@@ -78,7 +79,8 @@ class OSRMProvider(RoutingProvider):
         self,
         base_url: Optional[str] = None,
         timeout_seconds: float = 8.0,
-        user_agent: str = "SafeGuard-Safety-Engine/1.0"
+        user_agent: str = "SafeGuard-Safety-Engine/1.0",
+        supported_profiles: Optional[List[str]] = None
     ):
         """
         Initialize OSRM routing provider.
@@ -87,18 +89,46 @@ class OSRMProvider(RoutingProvider):
             base_url (str, optional): OSRM server URL. Defaults to env OSRM_BASE_URL or public demo.
             timeout_seconds (float): Network request timeout.
             user_agent (str): Request User-Agent header.
+            supported_profiles (list, optional): Explicit list of supported profiles for this instance.
         """
-        self.base_url = (
+        raw_url = (
             base_url
             or os.environ.get("OSRM_BASE_URL")
             or self.DEFAULT_BASE_URL
-        ).rstrip("/")
+        )
+        self.base_url = raw_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.user_agent = user_agent
 
+        # Check provider profile capabilities honestly:
+        # The public demo OSRM instance (router.project-osrm.org) ONLY hosts the car/driving profile.
+        # Walking and cycling are not supported by the public demo server.
+        # Self-hosted OSRM instances or custom setups can specify supported profiles explicitly.
+        if supported_profiles is not None:
+            self.supported_profiles = tuple(p.lower() for p in supported_profiles)
+        elif self.base_url == self.DEFAULT_BASE_URL:
+            self.supported_profiles = ("driving", "car")
+        else:
+            self.supported_profiles = ("driving", "car", "walking", "foot", "cycling", "bike")
+
     def _resolve_profile(self, profile: str) -> str:
-        """Map generic profile names to OSRM mode profiles."""
-        return self.PROFILE_MAP.get(profile.lower(), "driving")
+        """
+        Map generic profile names to OSRM mode profiles while verifying provider capabilities.
+        Reports unsupported profiles honestly rather than returning deceptive routing data.
+        """
+        prof_key = (profile or "driving").lower()
+        if prof_key not in self.supported_profiles:
+            if self.base_url == self.DEFAULT_BASE_URL:
+                raise ValueError(
+                    f"Routing profile '{profile}' is not supported by the public OSRM server ({self.base_url}). "
+                    "The public demo server only hosts the 'driving' profile. "
+                    "Walking and cycling routing require a dedicated OSRM instance."
+                )
+            raise ValueError(
+                f"Routing profile '{profile}' is not supported by OSRM provider at {self.base_url}. "
+                f"Supported profiles: {list(self.supported_profiles)}"
+            )
+        return self.PROFILE_MAP.get(prof_key, "driving")
 
     def _build_url(self, request: RouteRequest) -> str:
         """Build OSRM route request URL with proper coordinate order (lon,lat)."""

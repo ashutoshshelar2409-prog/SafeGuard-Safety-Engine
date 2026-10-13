@@ -36,12 +36,24 @@ class TestRoutingProvider(unittest.TestCase):
         self.assertIn("overview=full", url)
         self.assertIn("geometries=geojson", url)
 
-    def test_osrm_profile_mapping(self):
-        provider = OSRMProvider()
-        self.assertEqual(provider._resolve_profile("walking"), "foot")
-        self.assertEqual(provider._resolve_profile("foot"), "foot")
-        self.assertEqual(provider._resolve_profile("cycling"), "bike")
-        self.assertEqual(provider._resolve_profile("driving"), "driving")
+    def test_osrm_profile_mapping_honesty(self):
+        # Public demo server only supports driving; walking/cycling are honestly rejected
+        public_provider = OSRMProvider()
+        self.assertEqual(public_provider._resolve_profile("driving"), "driving")
+        with self.assertRaises(ValueError):
+            public_provider._resolve_profile("walking")
+        with self.assertRaises(ValueError):
+            public_provider._resolve_profile("cycling")
+
+        # Custom provider configured with supported profiles maps properly
+        custom_provider = OSRMProvider(
+            base_url="http://custom-osrm.internal",
+            supported_profiles=["driving", "walking", "cycling", "foot", "bike"]
+        )
+        self.assertEqual(custom_provider._resolve_profile("walking"), "foot")
+        self.assertEqual(custom_provider._resolve_profile("foot"), "foot")
+        self.assertEqual(custom_provider._resolve_profile("cycling"), "bike")
+        self.assertEqual(custom_provider._resolve_profile("driving"), "driving")
 
     @patch("urllib.request.urlopen")
     def test_osrm_coordinate_normalization(self, mock_urlopen):

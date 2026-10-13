@@ -168,7 +168,7 @@ The API server (`src/api/server.py`) includes full **CORS support** (`Access-Con
     "preferred_ranking": "balanced"
   }
   ```
-  *(Supported profiles: `"driving"`, `"walking"`, `"foot"`, `"cycling"`, `"bike"`)*  
+  *(Supported profiles: `"driving"` on public OSRM demo server; `"walking"`, `"foot"`, `"cycling"`, `"bike"` supported on dedicated self-hosted OSRM instances)*  
   *(Supported preferred rankings: `"balanced"`, `"fastest"`, `"safest"`)*
 
 - **Response Body** `(200 OK)`:
@@ -296,9 +296,9 @@ export function useSafeRoute() {
 
 ### 1. Run Complete Test Suite (Pytest)
 ```bash
-.\.venv\Scripts\pytest
+.\.venv\Scripts\python.exe -m pytest -q
 ```
-*Executes all 48 tests (16 Member 1 tests + 32 Member 2 tests).*
+*Executes all 69 tests with full regression coverage (Member 1 tests + Member 2 tests).*
 
 ### 2. Run Member 2 Interactive Demo
 ```bash

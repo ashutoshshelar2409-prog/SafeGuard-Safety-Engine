@@ -297,3 +297,41 @@ new_report = {
 
 engine.community_reports.append(new_report)
 ```
+
+
+---
+
+## 7. Member 3: Modern Frontend / UI
+
+Member 3 delivers an interactive React + Vite frontend for hackathon demonstrations:
+- **Interactive Leaflet Map**: Draws exact route geometries with OpenStreetMap tiles, origin/destination pins, and alternate routes.
+- **Contextual Safety Analytics**: Real-time visualization of all 5 safety factors (Lighting, Crime, Emergency Access, Infrastructure, Community).
+- **Data Coverage Transparency**: Clearly distinguishes supported coverage (Bangalore sensor buffer) from sparse coverage (fallback baseline).
+- **Route Recommendations**: Visual winner badges for Fastest, Safest, and Balanced routes.
+- **Configurable API Endpoint**: Seamless connection to Member 2's HTTP server (\http://127.0.0.1:8000\).
+
+### Running Backend and Frontend in Separate Terminals:
+
+**Terminal 1 — Backend API Server:**
+\\ash
+.\.venv\Scripts\python.exe src/api/server.py 8000
+\Server runs on: \http://127.0.0.1:8000
+**Terminal 2 — Frontend Dev Server:**
+\\ash
+cd frontend
+npm install
+npm run dev
+\Vite application opens at: \http://localhost:5173
+### Verification & Test Commands:
+\\ash
+# Run Backend Pytest suite (69 tests passing)
+.\.venv\Scripts\python.exe -m pytest tests/
+
+# Run Frontend Vitest suite (9 tests passing)
+cd frontend
+npm test
+
+# Build Frontend production bundle
+cd frontend
+npm run build
+\

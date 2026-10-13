@@ -109,6 +109,7 @@ class EvaluatedRoute:
     weights: Dict[str, float]
     status: str = "success"
     message: str = ""
+    data_coverage: str = "supported"
     # Ranking metrics
     duration_minutes: float = 0.0
     distance_km: float = 0.0
@@ -131,6 +132,7 @@ class EvaluatedRoute:
             "safety_score": self.safety_score,
             "breakdown": self.breakdown,
             "weights": self.weights,
+            "data_coverage": self.data_coverage,
             "coordinates": self.route.coordinates,
             "rankings": {
                 "fastest": self.rank_fastest,

@@ -159,8 +159,18 @@ All raw inputs are transformed into a normalized **0–100 factor score**:
 ### Min-Max Scaling Formula:
 $$\text{Score} = \text{clamp}\left( \frac{\text{Value} - \text{Min}}{\text{Max} - \text{Min}} \times 100, \, 0, \, 100 \right)$$
 
-For inverted metrics (such as Crime and Community Reports where higher raw values mean lower safety):
+For inverted metrics (such as Crime and Community Reports where higher values mean lower safety):
 $$\text{Score}_{\text{inverted}} = 100 - \text{Score}$$
+
+### Route Length Bias Elimination (Per-Kilometre Density):
+To prevent shorter routes from being artificially favoured over longer routes under identical risk, Crime and Community metrics are normalized per kilometre:
+$$\text{route\_km} = \max(\text{route\_length\_km}(\text{coordinates}), \, 0.5)$$
+$$\text{crime\_per\_km} = \frac{\text{total\_crime\_count}}{\text{route\_km}}$$
+$$\text{severity\_per\_km} = \frac{\text{total\_community\_severity}}{\text{route\_km}}$$
+
+Benchmarks are calibrated as density thresholds:
+* **Max Crime Benchmark**: `10.0 crimes/km` (recalibrated from 30 crimes over ~3 km route)
+* **Max Community Severity Benchmark**: `5.0 severity/km` (recalibrated from 15 severity over ~3 km route)
 
 ### Final Weighted Aggregation Formula:
 $$\text{Final Safety Score} = \sum_{i=1}^{5} \left( \text{Factor Score}_i \times \text{Weight}_i \right)$$

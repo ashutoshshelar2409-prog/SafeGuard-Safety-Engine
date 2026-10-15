@@ -345,3 +345,37 @@ npm test
 cd frontend
 npm run build
 \
+
+
+---
+
+## 8. Member 4: AI & Community Incident Reports
+
+Member 4 provides the community intelligence and crowdsourced incident reporting system:
+- **Incident Validation**: Coordinates (-90 to 90, -180 to 180), text length checks (5-1000 characters), ISO 8601 timestamps, and category normalization.
+- **Explainable AI Text Classification**: Lightweight, rule- and lexical-assisted NLP classifier matching 6 safety categories:
+  - poor_lighting: Broken lamps, dark alleys, unlit zones.
+  - 
+oad_hazard: Potholes, road damage, debris, oil spills.
+  - harassment: Catcalling, verbal abuse, stalking, intimidation.
+  - suspicious_activity: Loitering, casing cars/property, prowling.
+  - infrastructure_problem: Open manholes, severe waterlogging, broken sidewalks.
+  - other: Ambiguous or unclassified reports flagged for human review.
+- **Duplicate Detection**: Spatio-temporal and text similarity engine (Haversine proximity < 200m, time window < 12h, Jaccard vocabulary overlap >= 0.35).
+- **Report Aggregation & Analytics**: Area filtering by radius, category breakdowns, and explicit separation between verified and unverified reports.
+- **Privacy & Protection**: Automatic exclusion of reporter PII; sanitized public dictionaries via 	o_public_dict().
+- **Integration with Member 1 & 3**:
+  - Member 1 can consume only human-verified reports via CommunityReportService.export_verified_reports_for_safety_engine(), leaving scoring formulas untouched.
+  - Member 3 gets dedicated REST endpoints with full CORS for map pins, submission dialogs, and summary analytics.
+
+### Member 4 REST Endpoints:
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | /api/reports | Submit community incident report with AI classification |
+| GET | /api/reports | List public community reports with spatial/status filters |
+| GET | /api/reports/summary | Get aggregate report stats, category counts, verified breakdown |
+| GET | /api/reports/{id} | Retrieve individual public report details by ID |
+| POST / PATCH | /api/reports/{id}/review | Moderator review workflow (erified, 
+ejected, duplicate) |
+
+For complete documentation, example JSON payloads, and integration diagrams, see [docs/member4-integration.md](docs/member4-integration.md).

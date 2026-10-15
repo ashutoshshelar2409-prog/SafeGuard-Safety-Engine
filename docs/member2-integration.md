@@ -214,6 +214,14 @@ The API server (`src/api/server.py`) includes full **CORS support** (`Access-Con
           "infrastructure": 0.15,
           "community": 0.2
         },
+        "data_availability": {
+          "lighting": true,
+          "crime": true,
+          "emergency_access": true,
+          "infrastructure": true,
+          "community": true
+        },
+        "data_quality": "sufficient_data",
         "coordinates": [
           {"latitude": 12.971848, "longitude": 77.594697},
           {"latitude": 12.972063, "longitude": 77.59416},

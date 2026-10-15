@@ -50,6 +50,46 @@ class TestSafetyEngine(unittest.TestCase):
         self.assertEqual(result["route_id"], "test_route_999")
         self.assertTrue(0.0 <= result["safety_score"] <= 100.0)
 
+    def test_data_quality_indicator_sufficient_data(self):
+        """Routes with comprehensive data coverage should be marked as sufficient_data."""
+        engine = SafetyEngine(data_dir="data/raw")
+        engine.load_data()
+
+        result = engine.analyze_route("examples/sample_route.json")
+        self.assertEqual(result["data_quality"], "sufficient_data")
+        self.assertIn("data_availability", result)
+        self.assertTrue(result["data_availability"]["crime"])
+
+    def test_missing_data_not_treated_as_evidence_of_safety(self):
+        """
+        Routes outside data coverage must be marked as insufficient_data or limited_data,
+        and missing crime/community factors must default to neutral 50.0 (NOT 100.0).
+        """
+        engine = SafetyEngine(data_dir="data/raw")
+        engine.load_data()
+
+        # Route far in New Delhi with no coverage in Bangalore datasets
+        remote_route = Route(
+            route_id="remote_uncovered_route",
+            distance_km=4.0,
+            duration_minutes=15.0,
+            coordinates=[
+                {"latitude": 28.6139, "longitude": 77.2090},
+                {"latitude": 28.6200, "longitude": 77.2150}
+            ]
+        )
+
+        result = engine.analyze_route(remote_route)
+
+        # Must flag insufficient/limited data
+        self.assertIn(result["data_quality"], ["insufficient_data", "limited_data"])
+        self.assertFalse(result["data_availability"]["crime"])
+        self.assertFalse(result["data_availability"]["community"])
+
+        # Crucial: missing crime/community data must NOT score 100.0 (which would falsely imply perfect safety)
+        self.assertEqual(result["breakdown"]["crime"], 50.0)
+        self.assertEqual(result["breakdown"]["community"], 50.0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,15 +4,30 @@ Includes tests verifying scoring directions (Higher crime -> lower score; Better
 """
 
 import unittest
-from src.scoring.crime_score import calculate_crime_score
+from src.processing.route_processing import route_length_km
+from src.scoring.crime_score import calculate_crime_score, MAX_CRIMES_PER_KM
 from src.scoring.lighting_score import calculate_lighting_score
 from src.scoring.emergency_score import calculate_emergency_score
 from src.scoring.infrastructure_score import calculate_infrastructure_score
-from src.scoring.community_score import calculate_community_score
+from src.scoring.community_score import calculate_community_score, MAX_COMMUNITY_SEVERITY_PER_KM
 from src.scoring.final_score import calculate_final_safety_score
 
 
 class TestScoring(unittest.TestCase):
+
+    def test_route_length_km(self):
+        """Verify haversine sum calculation across route coordinates."""
+        self.assertEqual(route_length_km([]), 0.0)
+        self.assertEqual(route_length_km([{"latitude": 12.9716, "longitude": 77.5946}]), 0.0)
+
+        # Two points in Bangalore approx 1.6 km apart
+        coords = [
+            {"latitude": 12.9716, "longitude": 77.5946},
+            {"latitude": 12.9850, "longitude": 77.6000}
+        ]
+        length = route_length_km(coords)
+        self.assertGreater(length, 1.0)
+        self.assertLess(length, 2.5)
 
     def test_crime_score_directionality(self):
         """Verify that higher crime count leads to a LOWER crime safety score."""
@@ -25,6 +40,34 @@ class TestScoring(unittest.TestCase):
         self.assertGreater(low_crime_score, high_crime_score)
         self.assertTrue(0.0 <= low_crime_score <= 100.0)
         self.assertTrue(0.0 <= high_crime_score <= 100.0)
+
+    def test_crime_length_bias_fix(self):
+        """
+        Verify that a 10 km route with 10 crimes and a 1 km route with 1 crime
+        (identical 1.0 crime/km density) yield the exact same safety score.
+        """
+        crime_10km = [{"crime_count": 10}]
+        crime_1km = [{"crime_count": 1}]
+
+        score_10km = calculate_crime_score(crime_10km, route_km=10.0)
+        score_1km = calculate_crime_score(crime_1km, route_km=1.0)
+
+        self.assertEqual(score_10km, score_1km)
+        self.assertEqual(score_10km, 90.0)  # 1.0 crime/km with MAX 10.0 -> 90.0
+
+    def test_community_length_bias_fix(self):
+        """
+        Verify that a 10 km route with severity 10 and a 1 km route with severity 1
+        (identical 1.0 severity/km density) yield the exact same safety score.
+        """
+        reports_10km = [{"severity": 10}]
+        reports_1km = [{"severity": 1}]
+
+        score_10km = calculate_community_score(reports_10km, route_km=10.0)
+        score_1km = calculate_community_score(reports_1km, route_km=1.0)
+
+        self.assertEqual(score_10km, score_1km)
+        self.assertEqual(score_10km, 80.0)  # 1.0 severity/km with MAX 5.0 -> 80.0
 
     def test_lighting_score_directionality(self):
         """Verify that better lighting quality leads to a HIGHER lighting safety score."""

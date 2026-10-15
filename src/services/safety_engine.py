@@ -27,7 +27,8 @@ from src.processing.validation import (
 from src.processing.cleaning import clean_dataset, clean_community_reports
 from src.processing.route_processing import (
     filter_data_near_route,
-    filter_reports_near_route
+    filter_reports_near_route,
+    route_length_km
 )
 from src.scoring.crime_score import calculate_crime_score
 from src.scoring.lighting_score import calculate_lighting_score
@@ -157,24 +158,67 @@ class SafetyEngine:
         nearby_infra = filter_data_near_route(route.coordinates, self.infrastructure_df, radius_km=1.0)
         nearby_community = filter_reports_near_route(route.coordinates, self.community_reports, radius_km=1.0)
 
-        # Step 2: Calculate individual 0–100 factor scores
+        # Track data availability separately for each factor (do not assume missing data = safe)
+        has_lighting = bool(not nearby_lighting.empty if hasattr(nearby_lighting, "empty") else len(nearby_lighting) > 0)
+        has_crime = bool(not nearby_crime.empty if hasattr(nearby_crime, "empty") else len(nearby_crime) > 0)
+        has_infra = bool(not nearby_infra.empty if hasattr(nearby_infra, "empty") else len(nearby_infra) > 0)
+        has_community = bool(len(nearby_community) > 0)
+        emergency_is_empty = (self.emergency_df.empty if hasattr(self.emergency_df, "empty") else len(self.emergency_df) == 0)
+        has_emergency = not emergency_is_empty
+
+        data_availability = {
+            "lighting": has_lighting,
+            "crime": has_crime,
+            "emergency_access": has_emergency,
+            "infrastructure": has_infra,
+            "community": has_community
+        }
+
+        # Determine overall data quality indicator
+        available_count = sum(1 for v in data_availability.values() if v)
+        if available_count >= 4:
+            data_quality = "sufficient_data"
+            message = "Safety score calculated contextually based on available route safety parameters."
+        elif available_count >= 2:
+            data_quality = "limited_data"
+            message = (
+                "Safety score calculated with limited safety data coverage along this route. "
+                "Missing factors use neutral defaults and do not reflect verified safety."
+            )
+        else:
+            data_quality = "insufficient_data"
+            message = (
+                "Insufficient safety data available along this route. "
+                "Scores are baseline estimates and do not reflect verified safety."
+            )
+
+        # Compute route length in km from coordinates (using sum of haversine distances)
+        coords_len = route_length_km(route.coordinates)
+        if coords_len <= 0.0 and getattr(route, "distance_km", 0.0) > 0.0:
+            route_km = max(float(route.distance_km), 0.5)
+        else:
+            route_km = max(coords_len, 0.5)
+
+        # Step 2: Calculate individual 0–100 factor scores (per-km for crime & community)
         breakdown = {
             "lighting": calculate_lighting_score(nearby_lighting),
-            "crime": calculate_crime_score(nearby_crime),
+            "crime": calculate_crime_score(nearby_crime, route_km=route_km),
             "emergency_access": calculate_emergency_score(route.coordinates, self.emergency_df),
             "infrastructure": calculate_infrastructure_score(nearby_infra),
-            "community": calculate_community_score(nearby_community)
+            "community": calculate_community_score(nearby_community, route_km=route_km)
         }
 
         # Step 3: Compute final weighted safety score
         final_score = calculate_final_safety_score(breakdown, FACTOR_WEIGHTS)
 
-        # Step 4: Return structured output format for Member 2 / Member 3 / Member 4 / Frontend
+        # Step 4: Return structured output format
         return {
             "route_id": route.route_id,
             "safety_score": final_score,
             "breakdown": breakdown,
             "weights": FACTOR_WEIGHTS,
+            "data_availability": data_availability,
+            "data_quality": data_quality,
             "status": "success",
-            "message": "Safety score calculated contextually based on available route safety parameters."
+            "message": message
         }

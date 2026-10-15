@@ -159,8 +159,18 @@ All raw inputs are transformed into a normalized **0–100 factor score**:
 ### Min-Max Scaling Formula:
 $$\text{Score} = \text{clamp}\left( \frac{\text{Value} - \text{Min}}{\text{Max} - \text{Min}} \times 100, \, 0, \, 100 \right)$$
 
-For inverted metrics (such as Crime and Community Reports where higher raw values mean lower safety):
+For inverted metrics (such as Crime and Community Reports where higher values mean lower safety):
 $$\text{Score}_{\text{inverted}} = 100 - \text{Score}$$
+
+### Route Length Bias Elimination (Per-Kilometre Density):
+To prevent shorter routes from being artificially favoured over longer routes under identical risk, Crime and Community metrics are normalized per kilometre:
+$$\text{route\_km} = \max(\text{route\_length\_km}(\text{coordinates}), \, 0.5)$$
+$$\text{crime\_per\_km} = \frac{\text{total\_crime\_count}}{\text{route\_km}}$$
+$$\text{severity\_per\_km} = \frac{\text{total\_community\_severity}}{\text{route\_km}}$$
+
+Benchmarks are calibrated as density thresholds:
+* **Max Crime Benchmark**: `10.0 crimes/km` (recalibrated from 30 crimes over ~3 km route)
+* **Max Community Severity Benchmark**: `5.0 severity/km` (recalibrated from 15 severity over ~3 km route)
 
 ### Final Weighted Aggregation Formula:
 $$\text{Final Safety Score} = \sum_{i=1}^{5} \left( \text{Factor Score}_i \times \text{Weight}_i \right)$$
@@ -297,3 +307,75 @@ new_report = {
 
 engine.community_reports.append(new_report)
 ```
+
+
+---
+
+## 7. Member 3: Modern Frontend / UI
+
+Member 3 delivers an interactive React + Vite frontend for hackathon demonstrations:
+- **Interactive Leaflet Map**: Draws exact route geometries with OpenStreetMap tiles, origin/destination pins, and alternate routes.
+- **Contextual Safety Analytics**: Real-time visualization of all 5 safety factors (Lighting, Crime, Emergency Access, Infrastructure, Community).
+- **Data Coverage Transparency**: Clearly distinguishes supported coverage (Bangalore sensor buffer) from sparse coverage (fallback baseline).
+- **Route Recommendations**: Visual winner badges for Fastest, Safest, and Balanced routes.
+- **Configurable API Endpoint**: Seamless connection to Member 2's HTTP server (\http://127.0.0.1:8000\).
+
+### Running Backend and Frontend in Separate Terminals:
+
+**Terminal 1 — Backend API Server:**
+\\ash
+.\.venv\Scripts\python.exe src/api/server.py 8000
+\Server runs on: \http://127.0.0.1:8000
+**Terminal 2 — Frontend Dev Server:**
+\\ash
+cd frontend
+npm install
+npm run dev
+\Vite application opens at: \http://localhost:5173
+### Verification & Test Commands:
+\\ash
+# Run Backend Pytest suite (69 tests passing)
+.\.venv\Scripts\python.exe -m pytest tests/
+
+# Run Frontend Vitest suite (9 tests passing)
+cd frontend
+npm test
+
+# Build Frontend production bundle
+cd frontend
+npm run build
+\
+
+
+---
+
+## 8. Member 4: AI & Community Incident Reports
+
+Member 4 provides the community intelligence and crowdsourced incident reporting system:
+- **Incident Validation**: Coordinates (-90 to 90, -180 to 180), text length checks (5-1000 characters), ISO 8601 timestamps, and category normalization.
+- **Explainable AI Text Classification**: Lightweight, rule- and lexical-assisted NLP classifier matching 6 safety categories:
+  - poor_lighting: Broken lamps, dark alleys, unlit zones.
+  - 
+oad_hazard: Potholes, road damage, debris, oil spills.
+  - harassment: Catcalling, verbal abuse, stalking, intimidation.
+  - suspicious_activity: Loitering, casing cars/property, prowling.
+  - infrastructure_problem: Open manholes, severe waterlogging, broken sidewalks.
+  - other: Ambiguous or unclassified reports flagged for human review.
+- **Duplicate Detection**: Spatio-temporal and text similarity engine (Haversine proximity < 200m, time window < 12h, Jaccard vocabulary overlap >= 0.35).
+- **Report Aggregation & Analytics**: Area filtering by radius, category breakdowns, and explicit separation between verified and unverified reports.
+- **Privacy & Protection**: Automatic exclusion of reporter PII; sanitized public dictionaries via 	o_public_dict().
+- **Integration with Member 1 & 3**:
+  - Member 1 can consume only human-verified reports via CommunityReportService.export_verified_reports_for_safety_engine(), leaving scoring formulas untouched.
+  - Member 3 gets dedicated REST endpoints with full CORS for map pins, submission dialogs, and summary analytics.
+
+### Member 4 REST Endpoints:
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | /api/reports | Submit community incident report with AI classification |
+| GET | /api/reports | List public community reports with spatial/status filters |
+| GET | /api/reports/summary | Get aggregate report stats, category counts, verified breakdown |
+| GET | /api/reports/{id} | Retrieve individual public report details by ID |
+| POST / PATCH | /api/reports/{id}/review | Moderator review workflow (erified, 
+ejected, duplicate) |
+
+For complete documentation, example JSON payloads, and integration diagrams, see [docs/member4-integration.md](docs/member4-integration.md).

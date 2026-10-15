@@ -66,6 +66,22 @@ class TestSafetyEngineAdapter(unittest.TestCase):
         with self.assertRaises(SafetyEngineIntegrationError):
             bad_adapter.ensure_data_loaded()
 
+    def test_adapter_reports_sparse_coverage_transparently(self):
+        """Routes far outside safety data coverage must report sparse coverage transparently."""
+        remote_route = Route(
+            route_id="remote_route_delhi",
+            distance_km=5.0,
+            duration_minutes=20.0,
+            coordinates=[
+                {"latitude": 28.6139, "longitude": 77.2090},
+                {"latitude": 28.6200, "longitude": 77.2150}
+            ]
+        )
+        result = self.adapter.analyze_route(remote_route)
+        self.assertEqual(result["data_coverage"], "sparse")
+        self.assertIn("fallback", result["message"].lower())
+        self.assertIn("disclaimer", result)
+
 
 if __name__ == "__main__":
     unittest.main()

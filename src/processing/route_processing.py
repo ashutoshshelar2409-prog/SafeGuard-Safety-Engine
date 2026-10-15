@@ -4,7 +4,7 @@ Calculates spatial proximity between route coordinates and safety data points us
 """
 
 import math
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Tuple
 
 try:
     import pandas as pd
@@ -35,6 +35,50 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return R * c
+
+
+def route_length_km(
+    coordinates: List[Union[Dict[str, float], Tuple[float, float], List[float]]]
+) -> float:
+    """
+    Computes total route distance in kilometers as the sum of Haversine distances
+    between consecutive coordinate points.
+
+    Args:
+        coordinates: List of geographical coordinate points.
+
+    Returns:
+        float: Total length of the route in kilometers.
+    """
+    if not coordinates or len(coordinates) < 2:
+        return 0.0
+
+    total_km = 0.0
+    for i in range(len(coordinates) - 1):
+        p1 = coordinates[i]
+        p2 = coordinates[i + 1]
+
+        # Extract lat/lon for point 1
+        if isinstance(p1, dict):
+            lat1 = float(p1.get("latitude", p1.get("lat", 0.0)))
+            lon1 = float(p1.get("longitude", p1.get("lng", p1.get("lon", 0.0))))
+        elif isinstance(p1, (list, tuple)) and len(p1) >= 2:
+            lat1, lon1 = float(p1[0]), float(p1[1])
+        else:
+            continue
+
+        # Extract lat/lon for point 2
+        if isinstance(p2, dict):
+            lat2 = float(p2.get("latitude", p2.get("lat", 0.0)))
+            lon2 = float(p2.get("longitude", p2.get("lng", p2.get("lon", 0.0))))
+        elif isinstance(p2, (list, tuple)) and len(p2) >= 2:
+            lat2, lon2 = float(p2[0]), float(p2[1])
+        else:
+            continue
+
+        total_km += haversine_distance(lat1, lon1, lat2, lon2)
+
+    return float(round(total_km, 4))
 
 
 def find_minimum_distance_to_route(

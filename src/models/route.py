@@ -34,19 +34,46 @@ class Route:
         self.coordinates = self._clean_coordinates(coordinates)
 
     def _clean_coordinates(self, coords: List[Any]) -> List[Dict[str, float]]:
-        """Normalizes various coordinate formats to [{'latitude': lat, 'longitude': lng}]."""
+        """
+        Normalizes various coordinate formats to [{'latitude': lat, 'longitude': lng}].
+        Raises ValueError if latitude or longitude is missing or out of valid range.
+        """
+        if not coords:
+            raise ValueError("Route must contain at least one valid coordinate point.")
+
         cleaned = []
         for point in coords:
             if isinstance(point, dict):
-                lat = float(point.get("latitude", point.get("lat", 0.0)))
-                lng = float(point.get("longitude", point.get("lng", point.get("lon", 0.0))))
-            elif isinstance(point, (list, tuple)) and len(point) >= 2:
-                lat = float(point[0])
-                lng = float(point[1])
+                lat_val = point.get("latitude") if "latitude" in point else point.get("lat")
+                if lat_val is None:
+                    raise ValueError(f"Coordinate point missing latitude: {point}")
+
+                lng_val = point.get("longitude") if "longitude" in point else (point.get("lng") if "lng" in point else point.get("lon"))
+                if lng_val is None:
+                    raise ValueError(f"Coordinate point missing longitude: {point}")
+
+                try:
+                    lat = float(lat_val)
+                    lng = float(lng_val)
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Invalid coordinate numbers in {point}: {e}")
+
+            elif isinstance(point, (list, tuple)):
+                if len(point) < 2 or point[0] is None or point[1] is None:
+                    raise ValueError(f"Coordinate point tuple/list must contain at least 2 non-null numbers: {point}")
+                try:
+                    lat = float(point[0])
+                    lng = float(point[1])
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Invalid coordinate numbers in {point}: {e}")
             else:
-                continue
+                raise ValueError(f"Invalid coordinate point format: {point}")
+
+            if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lng <= 180.0):
+                raise ValueError(f"Coordinate values out of valid geographical bounds: lat={lat}, lng={lng}")
+
             cleaned.append({"latitude": lat, "longitude": lng})
-        
+
         if not cleaned:
             raise ValueError("Route must contain at least one valid coordinate point.")
         return cleaned

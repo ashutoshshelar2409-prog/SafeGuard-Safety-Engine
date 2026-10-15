@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Optional
 
 from src.models.route import Route
 from src.processing.validation import validate_coordinates
+from src.processing.route_processing import filter_data_near_route, filter_reports_near_route
 from src.services.safety_engine import SafetyEngine
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,38 @@ class SafetyEngineAdapter:
             if factor not in breakdown:
                 logger.warning("Factor '%s' missing from Member 1 breakdown.", factor)
 
-        return raw_result
+        # Transparent assessment of data coverage along the route
+        nearby_crime = filter_data_near_route(route.coordinates, self.engine.crime_df, radius_km=1.0)
+        nearby_lighting = filter_data_near_route(route.coordinates, self.engine.lighting_df, radius_km=1.0)
+        nearby_infra = filter_data_near_route(route.coordinates, self.engine.infrastructure_df, radius_km=1.0)
+        nearby_community = filter_reports_near_route(route.coordinates, self.engine.community_reports, radius_km=1.0)
+
+        has_coverage = (
+            (len(nearby_crime) > 0 if not hasattr(nearby_crime, "empty") else not nearby_crime.empty) or
+            (len(nearby_lighting) > 0 if not hasattr(nearby_lighting, "empty") else not nearby_lighting.empty) or
+            (len(nearby_infra) > 0 if not hasattr(nearby_infra, "empty") else not nearby_infra.empty) or
+            (len(nearby_community) > 0)
+        )
+
+        result_copy = dict(raw_result)
+        if not has_coverage:
+            result_copy["data_coverage"] = "sparse"
+            result_copy["message"] = (
+                "Safety score calculated using baseline/fallback scores due to limited safety data "
+                "coverage in this geographic area. Not a guarantee of personal safety."
+            )
+        else:
+            result_copy["data_coverage"] = "supported"
+            result_copy["message"] = (
+                "Safety score calculated contextually based on available route safety parameters. "
+                "Not a guarantee of personal safety."
+            )
+        result_copy["disclaimer"] = (
+            "SafeGuard safety scores are contextual analytical estimates based on available historical "
+            "and environmental datasets and do not guarantee personal safety."
+        )
+
+        return result_copy
 
     def analyze_routes(self, routes: List[Route]) -> List[Dict[str, Any]]:
         """

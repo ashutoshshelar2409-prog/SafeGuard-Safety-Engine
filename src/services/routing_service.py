@@ -83,7 +83,8 @@ class RoutingService:
                 breakdown=safety_output.get("breakdown", {}),
                 weights=safety_output.get("weights", {}),
                 status=safety_output.get("status", "success"),
-                message=safety_output.get("message", "")
+                message=safety_output.get("message", ""),
+                data_coverage=safety_output.get("data_coverage", "supported")
             )
             evaluated_routes.append(evaluated)
 
@@ -116,6 +117,10 @@ class RoutingService:
                 "safest_route_id": safest_winner.route.route_id,
                 "balanced_route_id": balanced_winner.route.route_id
             },
+            "disclaimer": (
+                "SafeGuard safety scores are contextual analytical estimates based on available historical "
+                "and environmental datasets and do not guarantee personal safety."
+            ),
             "routes": [r.to_dict() for r in ordered_routes]
         }
 
@@ -149,7 +154,8 @@ class RoutingService:
                 breakdown=safety_output.get("breakdown", {}),
                 weights=safety_output.get("weights", {}),
                 status=safety_output.get("status", "success"),
-                message=safety_output.get("message", "")
+                message=safety_output.get("message", ""),
+                data_coverage=safety_output.get("data_coverage", "supported")
             )
             evaluated_routes.append(evaluated)
 
@@ -171,5 +177,9 @@ class RoutingService:
                 "safest_route_id": safest_winner.route.route_id,
                 "balanced_route_id": balanced_winner.route.route_id
             },
+            "disclaimer": (
+                "SafeGuard safety scores are contextual analytical estimates based on available historical "
+                "and environmental datasets and do not guarantee personal safety."
+            ),
             "routes": [r.to_dict() for r in ordered_routes]
         }

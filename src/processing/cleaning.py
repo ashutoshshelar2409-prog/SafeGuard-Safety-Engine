@@ -39,6 +39,14 @@ def clean_dataset(
                 lambda r: validate_coordinates(r["latitude"], r["longitude"]), axis=1
             )
             cleaned = cleaned[valid_mask]
+
+        # Range checks: crime_count >= 0, lighting and road condition between 0 and 100
+        if "crime_count" in cleaned.columns:
+            cleaned = cleaned[cleaned["crime_count"] >= 0]
+        for col in ["lighting_quality", "lighting", "road_condition", "pedestrian_access"]:
+            if col in cleaned.columns:
+                cleaned = cleaned[(cleaned[col] >= 0.0) & (cleaned[col] <= 100.0)]
+
         return cleaned.reset_index(drop=True)
 
     # Pure Python list of dicts cleaning fallback
@@ -80,6 +88,20 @@ def clean_dataset(
             if "latitude" in row and "longitude" in row:
                 if not validate_coordinates(row["latitude"], row["longitude"]):
                     continue
+
+            # Range checks: crime_count >= 0, lighting and road condition between 0 and 100
+            if "crime_count" in row and row["crime_count"] is not None:
+                if row["crime_count"] < 0:
+                    continue
+
+            out_of_range = False
+            for col in ("lighting_quality", "lighting", "road_condition", "pedestrian_access"):
+                if col in row and row[col] is not None:
+                    if not (0.0 <= row[col] <= 100.0):
+                        out_of_range = True
+                        break
+            if out_of_range:
+                continue
 
             seen.add(row_key)
             cleaned_list.append(row)

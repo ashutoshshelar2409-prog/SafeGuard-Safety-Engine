@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 try:
     from http.server import ThreadingHTTPServer as DefaultHTTPServer
 except ImportError:
@@ -81,8 +82,8 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header("Content-Type", content_type)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Key")
         if extra_headers:
             for key, val in extra_headers.items():
                 self.send_header(key, val)
@@ -108,13 +109,20 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
         """Handles CORS preflight requests."""
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Key")
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    # Bug 4 fix: maximum allowed request body size (100 KB)
+    _MAX_BODY_BYTES: int = 100 * 1024  # 100 KB
+
     def _read_json_body(self) -> Optional[Dict[str, Any]]:
-        """Reads and parses JSON request body, sending 400 response on failure."""
+        """Reads and parses JSON request body, sending 400 response on failure.
+
+        Bug 4 fix: Enforces a 100 KB cap on Content-Length before reading any
+        bytes, preventing large bodies from being fully buffered into memory.
+        """
         try:
             content_length_header = self.headers.get("Content-Length")
             if not content_length_header:
@@ -123,6 +131,14 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             content_length = int(content_length_header)
             if content_length <= 0:
                 self._send_error_response(400, "Request body cannot be empty. JSON payload required.")
+                return None
+            # Bug 4 fix: reject bodies that exceed the size cap before reading
+            if content_length > self._MAX_BODY_BYTES:
+                self._send_error_response(
+                    400,
+                    f"Request body too large ({content_length} bytes). "
+                    f"Maximum allowed size is {self._MAX_BODY_BYTES} bytes (100 KB)."
+                )
                 return None
             body_bytes = self.rfile.read(content_length)
             if not body_bytes:
@@ -180,21 +196,31 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             return
 
         # 3. Community report summary
+        # Bug 1 fix: wrap float parsing so invalid query params return 400
         if path in REPORTS_SUMMARY_PATHS:
-            lat = float(params["lat"]) if "lat" in params else None
-            lon = float(params["lon"]) if "lon" in params else None
-            radius_km = float(params["radius_km"]) if "radius_km" in params else None
+            try:
+                lat = float(params["lat"]) if "lat" in params else None
+                lon = float(params["lon"]) if "lon" in params else None
+                radius_km = float(params["radius_km"]) if "radius_km" in params else None
+            except (ValueError, TypeError) as exc:
+                self._send_error_response(400, f"Invalid query parameter value: {exc}")
+                return
             summary = report_svc.get_summary(lat=lat, lon=lon, radius_km=radius_km)
             self._send_json_response(200, {"status": "success", "summary": summary})
             return
 
         # 4. Community reports list
+        # Bug 1 fix: wrap float parsing so invalid query params return 400
         if path in REPORTS_PATHS:
             status = params.get("status")
             category = params.get("category")
-            lat = float(params["lat"]) if "lat" in params else None
-            lon = float(params["lon"]) if "lon" in params else None
-            radius_km = float(params["radius_km"]) if "radius_km" in params else None
+            try:
+                lat = float(params["lat"]) if "lat" in params else None
+                lon = float(params["lon"]) if "lon" in params else None
+                radius_km = float(params["radius_km"]) if "radius_km" in params else None
+            except (ValueError, TypeError) as exc:
+                self._send_error_response(400, f"Invalid query parameter value: {exc}")
+                return
             time_window = params.get("time_window")
             since_iso = params.get("since")
 
@@ -353,7 +379,10 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             return
 
         # 4. Review status update
+        # Bug 3 fix: require X-Admin-Key header to protect review integrity
         if review_match:
+            if not self._check_admin_key():
+                return
             report_svc = self.report_service or CommunityReportService()
             report_id = review_match.group(1)
             new_status = body.get("status") or body.get("review_status")
@@ -374,7 +403,7 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
                 self._send_error_response(400, str(exc), errors=exc.errors)
             except Exception as exc:
                 logger.exception("Unexpected error updating report review")
-                self._send_error_response(500, f"Internal server error: {exc}")
+                self._send_error_response(500, "Internal server error. Check server logs.")
             return
 
     def do_PATCH(self):
@@ -384,6 +413,10 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
 
         if not review_match:
             self._handle_unsupported_method("PATCH")
+            return
+
+        # Bug 3 fix: require X-Admin-Key header before reading body
+        if not self._check_admin_key():
             return
 
         body = self._read_json_body()
@@ -411,7 +444,7 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             self._send_error_response(400, str(exc), errors=exc.errors)
         except Exception as exc:
             logger.exception("Unexpected error updating report review")
-            self._send_error_response(500, f"Internal server error: {exc}")
+            self._send_error_response(500, "Internal server error. Check server logs.")
 
     def do_PUT(self):
         """Rejects PUT with proper 405 or 404."""
@@ -455,6 +488,29 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             )
         else:
             self._send_error_response(404, f"Endpoint '{path}' not found.")
+
+    def _check_admin_key(self) -> bool:
+        """Bug 3 fix: validates X-Admin-Key header against SAFEGUARD_ADMIN_KEY env var.
+
+        Returns True if the key is valid (or no key is configured, for local dev).
+        Sends a 401 response and returns False when the key is missing or wrong.
+        """
+        required_key = os.environ.get("SAFEGUARD_ADMIN_KEY", "").strip()
+        if not required_key:
+            # No key configured — allow (useful for local dev without .env)
+            logger.warning(
+                "SAFEGUARD_ADMIN_KEY is not set. Admin endpoints are unprotected. "
+                "Set this env var before deploying."
+            )
+            return True
+        provided_key = self.headers.get("X-Admin-Key", "").strip()
+        if provided_key != required_key:
+            self._send_error_response(
+                401,
+                "Unauthorized. A valid 'X-Admin-Key' header is required for this endpoint."
+            )
+            return False
+        return True
 
     def _send_error_response(
         self,

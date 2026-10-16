@@ -34,7 +34,8 @@ if project_root not in sys.path:
 
 from src.services.routing_service import RoutingService
 from src.providers.routing_provider import RoutingError, RoutingConnectionError, NoRouteFoundError
-from src.services.safety_engine_adapter import SafetyEngineIntegrationError
+from src.services.safety_engine import SafetyEngine
+from src.services.safety_engine_adapter import SafetyEngineAdapter, SafetyEngineIntegrationError
 from src.services.community_service import CommunityReportService
 from src.processing.report_validation import ReportValidationError
 
@@ -568,9 +569,27 @@ def create_server(
     routing_service: Optional[RoutingService] = None,
     report_service: Optional[CommunityReportService] = None
 ) -> DefaultHTTPServer:
-    """Factory creating an instance of HTTPServer configured with SafeGuardRequestHandler."""
-    SafeGuardRequestHandler.routing_service = routing_service or RoutingService()
-    SafeGuardRequestHandler.report_service = report_service or CommunityReportService()
+    """Factory creating an instance of HTTPServer configured with SafeGuardRequestHandler.
+
+    Wires one shared CommunityReportService whose export_verified_reports_for_safety_engine
+    callable is injected into SafetyEngine so newly verified reports instantly affect safety
+    scores without any extra polling or reload step.
+    """
+    if report_service is None and routing_service is None:
+        # Build the shared service chain: report store -> engine -> adapter -> routing
+        report_service = CommunityReportService()
+        engine = SafetyEngine(
+            community_reports_provider=report_service.export_verified_reports_for_safety_engine
+        )
+        adapter = SafetyEngineAdapter(engine=engine)
+        routing_service = RoutingService(adapter=adapter)
+    else:
+        # Caller supplied at least one; fall back to independent defaults for the other
+        report_service = report_service or CommunityReportService()
+        routing_service = routing_service or RoutingService()
+
+    SafeGuardRequestHandler.routing_service = routing_service
+    SafeGuardRequestHandler.report_service = report_service
     DefaultHTTPServer.allow_reuse_address = True
     return DefaultHTTPServer((host, port), SafeGuardRequestHandler)
 

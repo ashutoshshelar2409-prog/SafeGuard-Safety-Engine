@@ -10,7 +10,6 @@ from typing import Dict, Any, List, Optional
 
 from src.models.route import Route
 from src.processing.validation import validate_coordinates
-from src.processing.route_processing import filter_data_near_route, filter_reports_near_route
 from src.services.safety_engine import SafetyEngine
 
 logger = logging.getLogger(__name__)

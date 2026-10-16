@@ -91,5 +91,108 @@ class TestSafetyEngine(unittest.TestCase):
         self.assertEqual(result["breakdown"]["community"], 50.0)
 
 
+class TestVerifiedReportsAffectScore(unittest.TestCase):
+    """
+    Bug 4 regression: verified community reports must change the community factor score;
+    pending / rejected reports must not.
+    """
+
+    # A pair of coordinates in the Bangalore area that the seed CSV data covers.
+    ROUTE_COORDS = [
+        {"latitude": 12.9716, "longitude": 77.5946},
+        {"latitude": 12.9720, "longitude": 77.5950},
+    ]
+
+    def _make_engine_with_store(self):
+        """Build an isolated engine + in-memory report service sharing the same provider."""
+        import tempfile, os
+        from src.services.community_service import CommunityReportService
+        from src.storage.report_store import ReportStore
+
+        tmp = tempfile.mkdtemp()
+        store = ReportStore(
+            persistence_file=os.path.join(tmp, "reports.json"),
+            seed_file=None,   # no seed — clean slate
+        )
+        svc = CommunityReportService(store=store)
+        engine = SafetyEngine(
+            data_dir="data/raw",
+            community_reports_provider=svc.export_verified_reports_for_safety_engine,
+        )
+        engine.load_data()
+        return engine, svc
+
+    def _baseline_score(self, engine):
+        """Score the fixed route with no reports in the store."""
+        route = Route(
+            route_id="bug4_baseline",
+            distance_km=0.5,
+            duration_minutes=5,
+            coordinates=self.ROUTE_COORDS,
+        )
+        return engine.analyze_route(route)
+
+    def test_verified_report_lowers_community_score(self):
+        """Submitting AND verifying a nearby report must lower the community score vs baseline."""
+        engine, svc = self._make_engine_with_store()
+
+        baseline = self._baseline_score(engine)
+        baseline_community = baseline["breakdown"]["community"]
+
+        # Submit a serious incident right on the route
+        report, _ = svc.submit_report({
+            "description": "Armed robbery at this junction last night",
+            "category": "suspicious_activity",
+            "latitude": 12.9716,
+            "longitude": 77.5946,
+            "severity": 5,
+        })
+        # Verify it — this is the action that should affect scores
+        svc.update_review_status(report.report_id, "verified")
+
+        after = self._baseline_score(engine)
+        after_community = after["breakdown"]["community"]
+
+        self.assertLess(
+            after_community,
+            baseline_community,
+            msg=(
+                f"Expected community score to DROP after verifying a severity-5 nearby report "
+                f"(was {baseline_community:.1f}, got {after_community:.1f})."
+            ),
+        )
+
+    def test_pending_and_rejected_reports_do_not_change_score(self):
+        """Pending and rejected reports must leave the community score completely unchanged."""
+        engine, svc = self._make_engine_with_store()
+
+        baseline_community = self._baseline_score(engine)["breakdown"]["community"]
+
+        # Submit a report (status = pending)
+        report, _ = svc.submit_report({
+            "description": "Suspicious activity observed near the crossing",
+            "category": "suspicious_activity",
+            "latitude": 12.9716,
+            "longitude": 77.5946,
+            "severity": 4,
+        })
+
+        pending_community = self._baseline_score(engine)["breakdown"]["community"]
+        self.assertEqual(
+            baseline_community,
+            pending_community,
+            msg="Pending report must not change community score.",
+        )
+
+        # Reject the report
+        svc.update_review_status(report.report_id, "rejected")
+        rejected_community = self._baseline_score(engine)["breakdown"]["community"]
+        self.assertEqual(
+            baseline_community,
+            rejected_community,
+            msg="Rejected report must not change community score.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

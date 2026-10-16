@@ -34,5 +34,41 @@
     "severity": 1,
     "timestamp": "2026-10-06T18:45:00Z",
     "description": "Deep pothole on sidewalk"
+  },
+  {
+    "report_id": "rep_pune_001",
+    "report_type": "streetlight_failure",
+    "latitude": 18.5362,
+    "longitude": 73.8938,
+    "severity": 3,
+    "timestamp": "2026-10-10T21:00:00Z",
+    "description": "Multiple street lamps out near Koregaon Park main road"
+  },
+  {
+    "report_id": "rep_pune_002",
+    "report_type": "harassment",
+    "latitude": 18.5195,
+    "longitude": 73.8553,
+    "severity": 4,
+    "timestamp": "2026-10-11T22:30:00Z",
+    "description": "Verbal harassment reported near Camp bus stop at night"
+  },
+  {
+    "report_id": "rep_pune_003",
+    "report_type": "unsafe_road",
+    "latitude": 18.5089,
+    "longitude": 73.9259,
+    "severity": 2,
+    "timestamp": "2026-10-12T19:15:00Z",
+    "description": "Large pothole on Hadapsar main road causing accidents"
+  },
+  {
+    "report_id": "rep_pune_004",
+    "report_type": "suspicious_activity",
+    "latitude": 18.5074,
+    "longitude": 73.8077,
+    "severity": 3,
+    "timestamp": "2026-10-13T23:00:00Z",
+    "description": "Suspicious individuals loitering near Kothrud bus depot"
   }
 ]

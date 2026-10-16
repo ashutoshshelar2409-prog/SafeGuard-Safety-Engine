@@ -8,7 +8,7 @@ and generates transparent weighted final safety score output.
 import csv
 import json
 import os
-from typing import Dict, Any, Optional, Union, List
+from typing import Callable, Dict, Any, Optional, Union, List
 
 try:
     import pandas as pd
@@ -60,19 +60,38 @@ class SafetyEngine:
     Main Safety Score and Data Processing Engine for SafeGuard.
     """
 
-    def __init__(self, data_dir: str = "data/raw"):
+    def __init__(
+        self,
+        data_dir: str = "data/raw",
+        community_reports_provider: Optional[Callable[[], List[Dict[str, Any]]]] = None
+    ):
         """
         Initialize SafetyEngine with default data directory path.
 
         Args:
             data_dir (str): Directory containing raw safety data files.
+            community_reports_provider: Optional callable that returns a fresh list of
+                verified community report dicts at analysis time. When provided the
+                static JSON file is skipped in load_data() to avoid double-counting.
         """
         self.data_dir = data_dir
+        self._community_reports_provider = community_reports_provider
         self.crime_df = pd.DataFrame() if HAS_PANDAS else []
         self.lighting_df = pd.DataFrame() if HAS_PANDAS else []
         self.emergency_df = pd.DataFrame() if HAS_PANDAS else []
         self.infrastructure_df = pd.DataFrame() if HAS_PANDAS else []
-        self.community_reports = []
+        self.community_reports = []  # used only when no provider is set
+
+    def _current_reports(self) -> List[Dict[str, Any]]:
+        """Returns the live community reports to use for scoring.
+
+        If a provider callable was injected (live store path), call it fresh on
+        every analysis so newly verified reports are included immediately.
+        Otherwise fall back to the static list loaded from disk.
+        """
+        if self._community_reports_provider is not None:
+            return self._community_reports_provider()
+        return self.community_reports
 
     def load_data(self) -> None:
         """Loads and validates default raw data files from the data directory."""
@@ -121,7 +140,10 @@ class SafetyEngine:
                 defaults={"road_condition": 50, "pedestrian_access": 50}
             )
 
-        if os.path.exists(community_path):
+        # Only load community reports from disk when no live provider is injected.
+        # With a provider the caller already owns the report store; loading from the
+        # JSON file would double-count seed data.
+        if self._community_reports_provider is None and os.path.exists(community_path):
             with open(community_path, "r", encoding="utf-8") as f:
                 reports = json.load(f)
             validate_community_reports(reports)
@@ -156,7 +178,7 @@ class SafetyEngine:
         nearby_crime = filter_data_near_route(route.coordinates, self.crime_df, radius_km=1.0)
         nearby_lighting = filter_data_near_route(route.coordinates, self.lighting_df, radius_km=1.0)
         nearby_infra = filter_data_near_route(route.coordinates, self.infrastructure_df, radius_km=1.0)
-        nearby_community = filter_reports_near_route(route.coordinates, self.community_reports, radius_km=1.0)
+        nearby_community = filter_reports_near_route(route.coordinates, self._current_reports(), radius_km=1.0)
 
         # Track data availability separately for each factor (do not assume missing data = safe)
         has_lighting = bool(not nearby_lighting.empty if hasattr(nearby_lighting, "empty") else len(nearby_lighting) > 0)

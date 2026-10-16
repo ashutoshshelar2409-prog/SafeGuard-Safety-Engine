@@ -8,7 +8,7 @@ import unittest
 
 from src.models.community_report import CommunityReport, ReviewStatus, IncidentCategory
 from src.services.community_service import CommunityReportService
-from src.storage.report_store import ReportStore
+from src.storage.report_store import ReportStore, DuplicateReportIdError
 
 
 class TestReportStoreAndService(unittest.TestCase):
@@ -128,6 +128,62 @@ class TestReportStoreAndService(unittest.TestCase):
         self.assertEqual(len(exported), 1)
         self.assertEqual(exported[0]["report_id"], r1.report_id)
         self.assertEqual(exported[0]["severity"], 3)
+
+    def test_client_supplied_report_id_is_ignored(self):
+        """POSTing a report with an existing report_id must not overwrite the original."""
+        # Seed a verified report with a known ID
+        original = CommunityReport(
+            report_id="rep_001",
+            description="Original verified report",
+            category=IncidentCategory.POOR_LIGHTING.value,
+            latitude=12.9716,
+            longitude=77.5946,
+            review_status=ReviewStatus.VERIFIED,
+        )
+        self.store.add_report(original)
+
+        # Client tries to hijack rep_001 via the submit path
+        payload = {
+            "report_id": "rep_001",
+            "description": "Attacker-controlled text replacing the original",
+            "category": "road_hazard",
+            "latitude": 0.0,
+            "longitude": 0.0,
+        }
+        new_report, _ = self.service.submit_report(payload)
+
+        # The new report must get a freshly generated ID, not rep_001
+        self.assertNotEqual(new_report.report_id, "rep_001")
+
+        # The original must be completely unchanged
+        still_original = self.store.get_report("rep_001")
+        self.assertIsNotNone(still_original)
+        self.assertEqual(still_original.description, "Original verified report")
+        self.assertEqual(still_original.review_status, ReviewStatus.VERIFIED)
+
+    def test_add_report_raises_on_duplicate_id(self):
+        """ReportStore.add_report must raise DuplicateReportIdError for a repeated ID."""
+        report_a = CommunityReport(
+            report_id="dup_test_id",
+            description="First report with this ID",
+            category=IncidentCategory.OTHER.value,
+            latitude=12.9716,
+            longitude=77.5946,
+            review_status=ReviewStatus.PENDING,
+        )
+        self.store.add_report(report_a)
+
+        report_b = CommunityReport(
+            report_id="dup_test_id",
+            description="Second report trying to steal the same ID",
+            category=IncidentCategory.OTHER.value,
+            latitude=13.0,
+            longitude=77.6,
+            review_status=ReviewStatus.PENDING,
+        )
+        with self.assertRaises(DuplicateReportIdError) as ctx:
+            self.store.add_report(report_b)
+        self.assertEqual(ctx.exception.report_id, "dup_test_id")
 
 
 if __name__ == "__main__":

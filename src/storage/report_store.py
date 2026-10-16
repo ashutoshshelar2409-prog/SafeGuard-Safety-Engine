@@ -30,6 +30,14 @@ from src.services.report_analysis import ReportAggregator
 logger = logging.getLogger(__name__)
 
 
+class DuplicateReportIdError(ValueError):
+    """Raised when attempting to add a report whose ID already exists in the store."""
+    def __init__(self, report_id: str):
+        super().__init__(f"Report ID already exists: '{report_id}'.")
+        self.report_id = report_id
+
+
+
 class ReportStore:
     """
     Thread-safe repository for community reports with optional JSON file backup.
@@ -94,8 +102,14 @@ class ReportStore:
             logger.error("Failed to persist reports to '%s': %s", self.persistence_file, exc)
 
     def add_report(self, report: CommunityReport) -> CommunityReport:
-        """Adds a new community report to the store and persists if enabled."""
+        """Adds a new community report to the store and persists if enabled.
+
+        Raises:
+            DuplicateReportIdError: If a report with the same ID already exists.
+        """
         with self._lock:
+            if report.report_id in self._reports:
+                raise DuplicateReportIdError(report.report_id)
             self._reports[report.report_id] = report
             self._persist_unlocked()
             return report

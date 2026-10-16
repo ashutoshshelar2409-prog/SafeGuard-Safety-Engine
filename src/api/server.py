@@ -324,10 +324,11 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             except RoutingError as exc:
                 self._send_error_response(502, f"Routing provider failure: {exc}")
             except SafetyEngineIntegrationError as exc:
-                self._send_error_response(500, f"Safety Engine integration error: {exc}")
+                logger.exception("Safety Engine integration error")
+                self._send_error_response(500, "Safety Engine integration error. Check server logs.")
             except Exception as exc:
                 logger.exception("Unexpected server error")
-                self._send_error_response(500, f"Internal server error: {exc}")
+                self._send_error_response(500, "Internal server error. Check server logs.")
             return
 
         # 2. Route comparison
@@ -353,10 +354,11 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             except RoutingError as exc:
                 self._send_error_response(502, f"Routing provider failure: {exc}")
             except SafetyEngineIntegrationError as exc:
-                self._send_error_response(500, f"Safety Engine integration error: {exc}")
+                logger.exception("Safety Engine integration error")
+                self._send_error_response(500, "Safety Engine integration error. Check server logs.")
             except Exception as exc:
                 logger.exception("Unexpected server error")
-                self._send_error_response(500, f"Internal server error: {exc}")
+                self._send_error_response(500, "Internal server error. Check server logs.")
             return
 
         # 3. Community report submission
@@ -375,7 +377,7 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
                 self._send_error_response(400, str(exc), errors=exc.errors)
             except Exception as exc:
                 logger.exception("Unexpected error in report submission")
-                self._send_error_response(500, f"Internal server error: {exc}")
+                self._send_error_response(500, "Internal server error. Check server logs.")
             return
 
         # 4. Review status update

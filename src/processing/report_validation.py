@@ -244,8 +244,7 @@ def validate_report_dict(
     else:
         sanitized["severity"] = 1
 
-    # Optional report_id if specified (e.g. for updates/seeding)
-    if "report_id" in payload and payload["report_id"]:
-        sanitized["report_id"] = str(payload["report_id"]).strip()
+    # report_id is server-generated only; any client-supplied value is ignored.
+    sanitized.pop("report_id", None)
 
     return sanitized, errors

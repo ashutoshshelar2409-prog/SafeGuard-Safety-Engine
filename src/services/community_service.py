@@ -20,7 +20,7 @@ from src.processing.report_validation import (
 )
 from src.services.incident_classifier import IncidentClassifier
 from src.services.report_analysis import DuplicateDetector, ReportAggregator
-from src.storage.report_store import ReportStore
+from src.storage.report_store import ReportStore, DuplicateReportIdError
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ class CommunityReportService:
 
         # Step 4: Construct candidate report object
         report = CommunityReport(
-            report_id=sanitized_data.get("report_id") or CommunityReport.generate_id(),
+            report_id=CommunityReport.generate_id(),
             description=description,
             category=effective_category,
             latitude=sanitized_data["latitude"],

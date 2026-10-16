@@ -4,6 +4,7 @@ Integration tests for SafeGuard Community Reporting API Endpoints (Member 4).
 
 import io
 import json
+import os
 import unittest
 from unittest.mock import MagicMock
 
@@ -20,6 +21,16 @@ class TestReportAPI(unittest.TestCase):
         self.store = ReportStore(persistence_file=None, seed_file=None)
         self.service = CommunityReportService(store=self.store)
         SafeGuardRequestHandler.report_service = self.service
+        # Review endpoints require an admin key (Bug 5). Use dev bypass for tests.
+        self._orig_allow_insecure = os.environ.get("SAFEGUARD_ALLOW_INSECURE_ADMIN")
+        os.environ["SAFEGUARD_ALLOW_INSECURE_ADMIN"] = "1"
+
+    def tearDown(self):
+        # Restore env var to its original state
+        if self._orig_allow_insecure is None:
+            os.environ.pop("SAFEGUARD_ALLOW_INSECURE_ADMIN", None)
+        else:
+            os.environ["SAFEGUARD_ALLOW_INSECURE_ADMIN"] = self._orig_allow_insecure
 
     def _create_handler(self, method: str, path: str, body: dict = None, headers: dict = None):
         """Helper to create and initialize a SafeGuardRequestHandler."""

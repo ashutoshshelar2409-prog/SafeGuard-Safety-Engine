@@ -133,8 +133,16 @@ class SafetyEngineAdapter:
         # Re-use the engine's own data_availability so that live community reports
         # (fetched via _current_reports() inside analyze_route) are reflected here
         # without re-running spatial filters against the stale engine.community_reports.
+        #
+        # NOTE: emergency_access is intentionally excluded from this check.
+        # The emergency score uses the full emergency_df (not proximity-filtered to the
+        # route), so it is always True — even for a route in Delhi with no local data.
+        # Only the four proximity-dependent factors reflect genuine data coverage.
         data_availability = raw_result.get("data_availability", {})
-        has_coverage = any(data_availability.values())
+        proximity_factors = ("lighting", "crime", "infrastructure", "community")
+        has_coverage = any(
+            data_availability.get(f, False) for f in proximity_factors
+        )
 
         result_copy = dict(raw_result)
         if not has_coverage:

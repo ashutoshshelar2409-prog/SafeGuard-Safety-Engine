@@ -4,6 +4,7 @@ Unit Tests for SafeGuard API Server and Request Handler (Member 2).
 
 import io
 import json
+import os
 import threading
 import unittest
 from unittest.mock import MagicMock
@@ -410,6 +411,109 @@ class TestAPIServerLiveSocketIntegration(unittest.TestCase):
             self.assertEqual(data["status"], "success")
             self.assertEqual(data["total_routes_found"], 2)
             self.assertIn("disclaimer", data)
+
+
+class TestAdminKey(unittest.TestCase):
+    """Tests for Bug 5: _check_admin_key decision matrix."""
+
+    REVIEW_PATH = "/api/reports/rep_test/review"
+    REAL_KEY = "super-secret-test-key-abc123"
+
+    def _create_review_handler(self, provided_key=None, body=None):
+        """Helper: builds a PATCH handler for the review endpoint."""
+        handler = SafeGuardRequestHandler.__new__(SafeGuardRequestHandler)
+        handler.command = "PATCH"
+        handler.path = self.REVIEW_PATH
+        handler.request_version = "HTTP/1.1"
+        handler.close_connection = False
+
+        body_bytes = b""
+        raw_headers = {"Content-Type": "application/json"}
+        if body is not None:
+            body_bytes = json.dumps(body).encode("utf-8")
+            raw_headers["Content-Length"] = str(len(body_bytes))
+        if provided_key is not None:
+            raw_headers["X-Admin-Key"] = provided_key
+
+        handler.headers = raw_headers
+        handler.rfile = io.BytesIO(body_bytes)
+        handler.wfile = io.BytesIO()
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+        return handler
+
+    def setUp(self):
+        # Capture and clean relevant env vars before each test
+        self._orig_key = os.environ.pop("SAFEGUARD_ADMIN_KEY", None)
+        self._orig_dev = os.environ.pop("SAFEGUARD_ALLOW_INSECURE_ADMIN", None)
+
+    def tearDown(self):
+        # Restore env state after each test
+        if self._orig_key is not None:
+            os.environ["SAFEGUARD_ADMIN_KEY"] = self._orig_key
+        else:
+            os.environ.pop("SAFEGUARD_ADMIN_KEY", None)
+        if self._orig_dev is not None:
+            os.environ["SAFEGUARD_ALLOW_INSECURE_ADMIN"] = self._orig_dev
+        else:
+            os.environ.pop("SAFEGUARD_ALLOW_INSECURE_ADMIN", None)
+
+    def test_no_key_set_returns_503(self):
+        """Admin endpoint is disabled (503) when SAFEGUARD_ADMIN_KEY is unset."""
+        # Env already cleared in setUp
+        handler = self._create_review_handler()
+        result = handler._check_admin_key()
+
+        self.assertFalse(result)
+        handler.send_response.assert_called_with(503)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["code"], 503)
+        self.assertIn("disabled", payload["message"])
+
+    def test_placeholder_key_returns_503(self):
+        """Placeholder value 'change-me-before-deploying' is treated like no key → 503."""
+        os.environ["SAFEGUARD_ADMIN_KEY"] = "change-me-before-deploying"
+        handler = self._create_review_handler()
+        result = handler._check_admin_key()
+
+        self.assertFalse(result)
+        handler.send_response.assert_called_with(503)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["code"], 503)
+
+    def test_wrong_key_returns_401(self):
+        """A real key is configured but the client sends the wrong value → 401."""
+        os.environ["SAFEGUARD_ADMIN_KEY"] = self.REAL_KEY
+        handler = self._create_review_handler(provided_key="completely-wrong-key")
+        result = handler._check_admin_key()
+
+        self.assertFalse(result)
+        handler.send_response.assert_called_with(401)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["code"], 401)
+        self.assertIn("Unauthorized", payload["message"])
+
+    def test_correct_key_returns_true(self):
+        """Matching key passes through without sending any error response."""
+        os.environ["SAFEGUARD_ADMIN_KEY"] = self.REAL_KEY
+        handler = self._create_review_handler(provided_key=self.REAL_KEY)
+        result = handler._check_admin_key()
+
+        self.assertTrue(result)
+        # No error response must have been written
+        self.assertEqual(handler.wfile.getvalue(), b"")
+
+    def test_dev_flag_allows_access_with_no_key(self):
+        """SAFEGUARD_ALLOW_INSECURE_ADMIN=1 grants access even when no key is set."""
+        # No SAFEGUARD_ADMIN_KEY set
+        os.environ["SAFEGUARD_ALLOW_INSECURE_ADMIN"] = "1"
+        handler = self._create_review_handler()
+        result = handler._check_admin_key()
+
+        self.assertTrue(result)
+        # No error response must have been written
+        self.assertEqual(handler.wfile.getvalue(), b"")
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ Provides lightweight REST endpoints with full CORS support for the React SafeRou
 - PATCH /api/reports/{id}/review  -> Update report review status (verified, rejected, duplicate)
 """
 
+import hmac
 import json
 import logging
 import os
@@ -491,22 +492,47 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
         else:
             self._send_error_response(404, f"Endpoint '{path}' not found.")
 
-    def _check_admin_key(self) -> bool:
-        """Bug 3 fix: validates X-Admin-Key header against SAFEGUARD_ADMIN_KEY env var.
+    # Sentinel value that must never be accepted as a real key.
+    _PLACEHOLDER_KEY = "change-me-before-deploying"
 
-        Returns True if the key is valid (or no key is configured, for local dev).
-        Sends a 401 response and returns False when the key is missing or wrong.
+    def _check_admin_key(self) -> bool:
+        """Bug 5 fix: validates X-Admin-Key header against SAFEGUARD_ADMIN_KEY env var.
+
+        Decision matrix:
+        - Key unset or is the placeholder:
+            * SAFEGUARD_ALLOW_INSECURE_ADMIN=1 → allow (dev mode, warn loudly).
+            * Otherwise                         → 503 Service Unavailable (endpoint disabled).
+        - Key set and provided value matches (hmac.compare_digest) → allow.
+        - Key set but provided value is wrong or missing            → 401 Unauthorized.
         """
         required_key = os.environ.get("SAFEGUARD_ADMIN_KEY", "").strip()
-        if not required_key:
-            # No key configured — allow (useful for local dev without .env)
-            logger.warning(
-                "SAFEGUARD_ADMIN_KEY is not set. Admin endpoints are unprotected. "
-                "Set this env var before deploying."
+        key_missing_or_placeholder = (
+            not required_key or required_key == self._PLACEHOLDER_KEY
+        )
+
+        if key_missing_or_placeholder:
+            allow_insecure = os.environ.get("SAFEGUARD_ALLOW_INSECURE_ADMIN", "").strip() == "1"
+            if allow_insecure:
+                logger.warning(
+                    "SAFEGUARD_ALLOW_INSECURE_ADMIN=1: admin endpoints are unprotected. "
+                    "Never use this setting in production."
+                )
+                return True
+            # Endpoint is effectively disabled until a real key is configured.
+            self._send_error_response(
+                503,
+                "Admin endpoint is disabled: SAFEGUARD_ADMIN_KEY is not configured. "
+                "Set a strong random key or export SAFEGUARD_ALLOW_INSECURE_ADMIN=1 "
+                "for local development only."
             )
-            return True
+            return False
+
         provided_key = self.headers.get("X-Admin-Key", "").strip()
-        if provided_key != required_key:
+        # hmac.compare_digest prevents timing-based key enumeration.
+        if not hmac.compare_digest(
+            provided_key.encode("utf-8"),
+            required_key.encode("utf-8")
+        ):
             self._send_error_response(
                 401,
                 "Unauthorized. A valid 'X-Admin-Key' header is required for this endpoint."
@@ -551,6 +577,12 @@ def create_server(
 
 def run_server(host: str = "127.0.0.1", port: int = 8000):
     """Runs the API server until interrupted."""
+    # Load .env file if present (python-dotenv); silently skipped when not installed.
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass  # python-dotenv not installed — rely on shell-exported env vars.
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     server = create_server(host=host, port=port)
     print(f"==================================================", flush=True)

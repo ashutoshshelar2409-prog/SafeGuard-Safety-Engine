@@ -1,27 +1,28 @@
-# SafeGuard — Safety Score & Data Processing Engine (by Ashutosh)
+# SafeGuard — Contextual Safety Score & Data Processing Engine
 
-Welcome to **SafeGuard**, a smart contextual safety navigation system built for hackathons!
+**SafeGuard** is a smart contextual safety navigation system that provides real-time, explainable safety scores for geographical routes. The engine ingests raw environmental, historical, and community safety data, validates and normalizes it, then produces a transparent **Safety Score between 0 and 100** to help users make informed navigation decisions.
 
-This repository contains **Ashutosh's module**: the **Safety Engine**. It ingests raw environmental, historical, and community safety data, validates and normalizes it, processes route coordinates against spatial data buffers, and calculates a transparent, explainable **Safety Score between 0 and 100**.
-
-> ⚠️ **Important Disclaimer**: SafeGuard does **not** predict crime. The Safety Score represents a transparent, contextual safety signal derived directly from identifiable data sources (lighting quality, historical crime counts, emergency service proximity, infrastructure conditions, and community reports).
+> **Disclaimer:** SafeGuard does **not** predict crime. The Safety Score is a transparent, contextual signal derived from identifiable data sources — lighting quality, historical crime counts, emergency service proximity, infrastructure conditions, and community reports.
 
 ---
 
-## 1. Ashutosh's Responsibilities
+## Table of Contents
 
-As **Ashutosh**, this module is responsible for:
-- **Data Validation & Cleaning**: Ensuring raw dataset schemas are intact, handling missing values, and dropping duplicate entries.
-- **Data Normalization**: Scaling disparate metrics (e.g., crime counts, rating scales, distance measurements) to a uniform `0–100` scale.
-- **Route Data Processing**: Buffer-matching geographical route coordinates against nearby safety data points.
-- **Individual Factor Scoring**: Computing 0–100 factor scores for Lighting, Crime, Emergency Access, Infrastructure, and Community Reports.
-- **Weighted Aggregation**: Calculating an explainable weighted final score between 0 and 100.
-- **Integration Interfaces**: Providing clean interfaces for **Anushka's** Routing Engine and **Abhinav's** Community Reporting System.
-- **Security & Report Integrity**: Enforcing server-side report ID generation, preventing report overwrites, protecting admin endpoints with constant-time key checks.
+1. [Architecture & Pipeline](#architecture--pipeline)
+2. [Folder Structure](#folder-structure)
+3. [Data Sources](#data-sources)
+4. [Safety Factors & Weighting](#safety-factors--weighting)
+5. [Scoring Methodology](#scoring-methodology)
+6. [Installation & Setup](#installation--setup)
+7. [Running the Server](#running-the-server)
+8. [API Reference](#api-reference)
+9. [Running Tests](#running-tests)
+10. [Example Input & Output](#example-input--output)
+11. [Integration Guide](#integration-guide)
 
 ---
 
-## 2. Architecture & Data Processing Pipeline
+## Architecture & Pipeline
 
 ```text
 Raw Safety Data (CSV / JSON) & Route Coordinates (JSON)
@@ -53,20 +54,29 @@ Lighting   Crime     Emergency    Infrastructure  Community
              Final Safety Score (0–100)
                          │
                          ▼
-           Structured JSON Output for UI
+           Structured JSON Output for UI / Routing Engine
 ```
+
+**Core Capabilities:**
+- **Data Validation & Cleaning** — Enforces raw dataset schemas, handles missing values, and removes duplicate entries.
+- **Data Normalization** — Scales disparate metrics (crime counts, rating scales, distances) to a uniform `0–100` scale.
+- **Route Data Processing** — Buffer-matches geographical route coordinates against nearby safety data points using Haversine distance.
+- **Individual Factor Scoring** — Computes 0–100 factor scores for Lighting, Crime, Emergency Access, Infrastructure, and Community Reports.
+- **Weighted Aggregation** — Calculates an explainable weighted final score between 0 and 100.
+- **HTTP API** — Serves REST endpoints for route calculation, comparison, and community report management.
+- **Security** — Server-side report ID generation, protection against report overwrites, and constant-time admin key validation.
 
 ---
 
-## 3. Folder Structure
+## Folder Structure
 
 ```text
 safeguard-safety-engine/
 │
-├── README.md                    # Comprehensive project documentation
-├── requirements.txt             # Python dependencies (pandas, numpy, pytest, python-dotenv)
-├── .gitignore                   # Python & environment ignore file
-├── .env.example                 # Sample environment configuration (SAFEGUARD_ADMIN_KEY)
+├── README.md                    # Project documentation
+├── requirements.txt             # Python dependencies
+├── .gitignore
+├── .env.example                 # Sample environment configuration
 │
 ├── data/
 │   ├── raw/                     # Raw input datasets
@@ -75,41 +85,31 @@ safeguard-safety-engine/
 │   │   ├── emergency_services.csv
 │   │   ├── infrastructure.csv
 │   │   └── community_reports.json
-│   │
-│   └── processed/               # Directory for cleaned/processed outputs
-│       └── .gitkeep
+│   └── processed/               # Output directory for cleaned data
 │
 ├── src/
-│   ├── __init__.py
+│   ├── api/
+│   │   └── server.py            # ThreadingHTTPServer with CORS & admin key auth
 │   │
-│   ├── api/                     # HTTP API server (Anushka's routing + Abhinav's reports)
-│   │   ├── __init__.py
-│   │   └── server.py            # ThreadingHTTPServer, CORS, admin key auth
+│   ├── config/
+│   │   └── weights.py           # Centralized factor weights & scoring rules
 │   │
-│   ├── config/                  # Centralized factor weights & rules
-│   │   ├── __init__.py
-│   │   └── weights.py
-│   │
-│   ├── models/                  # Data structures
-│   │   ├── __init__.py
+│   ├── models/
 │   │   ├── route.py             # Route model
 │   │   ├── route_request.py     # RouteRequest / EvaluatedRoute models
 │   │   └── community_report.py  # CommunityReport model, ReviewStatus enum
 │   │
-│   ├── processing/              # Data transformation layer
-│   │   ├── __init__.py
+│   ├── processing/
 │   │   ├── validation.py        # Schema & coordinate checks
 │   │   ├── cleaning.py          # Missing values & duplicate handling
-│   │   ├── normalization.py     # Reusable Min-Max 0-100 scaling
+│   │   ├── normalization.py     # Reusable Min-Max 0–100 scaling
 │   │   ├── route_processing.py  # Haversine distance & spatial filtering
 │   │   └── report_validation.py # Community report field validation & sanitization
 │   │
-│   ├── providers/               # External routing provider wrappers
-│   │   ├── __init__.py
-│   │   └── routing_provider.py  # OSRM provider + error types
+│   ├── providers/
+│   │   └── routing_provider.py  # OSRM routing provider & error types
 │   │
-│   ├── scoring/                 # 0-100 Factor scoring logic
-│   │   ├── __init__.py
+│   ├── scoring/
 │   │   ├── crime_score.py
 │   │   ├── lighting_score.py
 │   │   ├── emergency_score.py
@@ -117,29 +117,26 @@ safeguard-safety-engine/
 │   │   ├── community_score.py
 │   │   └── final_score.py       # Weighted score calculator
 │   │
-│   ├── services/                # Business logic & orchestration
-│   │   ├── __init__.py
-│   │   ├── safety_engine.py     # Core scoring engine (supports live report provider)
+│   ├── services/
+│   │   ├── safety_engine.py          # Core scoring engine
 │   │   ├── safety_engine_adapter.py  # Routing ↔ Safety bridge
-│   │   ├── routing_service.py   # End-to-end route fetch + score + rank
-│   │   ├── route_ranking.py     # Multi-criteria route ranking
-│   │   ├── community_service.py # Report submit / review / export pipeline
+│   │   ├── routing_service.py        # End-to-end route fetch, score & rank
+│   │   ├── route_ranking.py          # Multi-criteria route ranking
+│   │   ├── community_service.py      # Report submit / review / export pipeline
 │   │   ├── incident_classifier.py    # AI text classifier (6 safety categories)
-│   │   └── report_analysis.py   # Duplicate detection & aggregation
+│   │   └── report_analysis.py        # Duplicate detection & aggregation
 │   │
 │   └── storage/
-│       ├── __init__.py
 │       └── report_store.py      # Thread-safe in-memory + JSON persistence store
 │
 ├── tests/                       # Unit & integration test suite (121 tests)
-│   ├── __init__.py
 │   ├── test_cleaning.py
 │   ├── test_normalization.py
 │   ├── test_scoring.py
-│   ├── test_safety_engine.py    # Includes Bug 4 regression tests
-│   ├── test_report_store.py     # Includes Bug 1 regression tests
+│   ├── test_safety_engine.py
+│   ├── test_report_store.py
 │   ├── test_report_validation.py
-│   └── test_api_server.py       # Includes Bug 5 admin key tests
+│   └── test_api_server.py
 │
 └── examples/
     └── sample_route.json        # Sample input route file
@@ -147,65 +144,73 @@ safeguard-safety-engine/
 
 ---
 
-## 4. Expected Data Sources
+## Data Sources
 
-1. **`crime.csv`**: Contains `area`, `latitude`, `longitude`, `crime_type`, `crime_count`.
-2. **`lighting.csv`**: Contains `area`, `latitude`, `longitude`, `lighting_quality` (scale 0–100).
-3. **`emergency_services.csv`**: Contains `name`, `type` (`police` or `hospital`), `latitude`, `longitude`.
-4. **`infrastructure.csv`**: Contains `area`, `latitude`, `longitude`, `road_condition`, `pedestrian_access`.
-5. **`community_reports.json`**: Seed community reports — used only when no live provider is injected (see Bug 4 fix).
+The engine expects the following input datasets in `data/raw/`:
 
----
-
-## 5. Safety Factors & Weighting System
-
-The final score is computed as a weighted average of 5 contextual safety factors:
-
-| Safety Factor | Weight | Configuration File | Direction Rule |
-| :--- | :---: | :--- | :--- |
-| **Lighting Quality** | **25%** | `src/config/weights.py` | Better lighting → Higher score |
-| **Historical Crime** | **25%** | `src/config/weights.py` | Higher crime → Lower score |
-| **Emergency Access** | **15%** | `src/config/weights.py` | Closer emergency services → Higher score |
-| **Infrastructure** | **15%** | `src/config/weights.py` | Better road & pedestrian quality → Higher score |
-| **Community Reports** | **20%** | `src/config/weights.py` | Higher report count & severity → Lower score |
-
-All weights sum to **100% (1.0)** and are stored centrally in `src/config/weights.py`.
+| File | Required Fields |
+|:---|:---|
+| `crime.csv` | `area`, `latitude`, `longitude`, `crime_type`, `crime_count` |
+| `lighting.csv` | `area`, `latitude`, `longitude`, `lighting_quality` (0–100 scale) |
+| `emergency_services.csv` | `name`, `type` (`police` or `hospital`), `latitude`, `longitude` |
+| `infrastructure.csv` | `area`, `latitude`, `longitude`, `road_condition`, `pedestrian_access` |
+| `community_reports.json` | Seed community reports — used when no live provider is injected |
 
 ---
 
-## 6. Scoring Methodology & Normalization
+## Safety Factors & Weighting
 
-All raw inputs are transformed into a normalized **0–100 factor score**:
-- **`100`** = Safest condition
-- **`0`** = Least safe condition
+The final score is a weighted average of five contextual safety factors, all configurable in `src/config/weights.py`:
 
-### Min-Max Scaling Formula:
-$$\text{Score} = \text{clamp}\left( \frac{\text{Value} - \text{Min}}{\text{Max} - \text{Min}} \times 100, \, 0, \, 100 \right)$$
+| Safety Factor | Weight | Scoring Direction |
+|:---|:---:|:---|
+| **Lighting Quality** | **25%** | Better lighting → Higher score |
+| **Historical Crime** | **25%** | Higher crime → Lower score |
+| **Emergency Access** | **15%** | Closer services → Higher score |
+| **Infrastructure** | **15%** | Better road & pedestrian quality → Higher score |
+| **Community Reports** | **20%** | Higher severity & count → Lower score |
 
-For inverted metrics (Crime and Community Reports — higher values mean lower safety):
+All weights sum to **100%**.
+
+---
+
+## Scoring Methodology
+
+All raw inputs are normalized to a **0–100 factor score**, where **100 = Safest** and **0 = Least Safe**.
+
+### Min-Max Scaling
+
+$$\text{Score} = \text{clamp}\left( \frac{\text{Value} - \text{Min}}{\text{Max} - \text{Min}} \times 100,\; 0,\; 100 \right)$$
+
+For inverted metrics (Crime and Community Reports — where higher values mean lower safety):
+
 $$\text{Score}_{\text{inverted}} = 100 - \text{Score}$$
 
-### Route Length Bias Elimination (Per-Kilometre Density):
-Crime and Community metrics are normalized per kilometre to prevent shorter routes being artificially favoured:
-$$\text{route\_km} = \max(\text{route\_length\_km}(\text{coordinates}), \, 0.5)$$
-$$\text{crime\_per\_km} = \frac{\text{total\_crime\_count}}{\text{route\_km}}$$
-$$\text{severity\_per\_km} = \frac{\text{total\_community\_severity}}{\text{route\_km}}$$
+### Route Length Bias Elimination
 
-Benchmarks:
+Crime and Community metrics are normalized per kilometre to prevent shorter routes from being artificially favoured:
+
+$$\text{route\_km} = \max(\text{route\_length\_km}(\text{coordinates}),\; 0.5)$$
+
+$$\text{crime\_per\_km} = \frac{\text{total\_crime\_count}}{\text{route\_km}}$$
+
+Benchmarks used for normalization:
 - **Max Crime Benchmark**: `10.0 crimes/km`
 - **Max Community Severity Benchmark**: `5.0 severity/km`
 
-### Missing Data Policy:
-Missing or unavailable factors default to **neutral 50.0** (not 100.0) to avoid falsely implying safety where data is absent.
+### Missing Data Policy
 
-### Final Weighted Aggregation Formula:
+Missing or unavailable factors default to a **neutral 50.0** (not 100.0), avoiding false implications of safety where data is absent.
+
+### Final Aggregation
+
 $$\text{Final Safety Score} = \sum_{i=1}^{5} \left( \text{Factor Score}_i \times \text{Weight}_i \right)$$
 
 ---
 
-## 7. Installation & Setup
+## Installation & Setup
 
-### Step 1: Create a Python Virtual Environment
+### Step 1: Create a Virtual Environment
 
 **Windows (PowerShell):**
 ```powershell
@@ -226,13 +231,12 @@ pip install -r requirements.txt
 
 ### Step 3: Configure the Admin Key
 
-Copy the example env file and generate a secure key:
-
+Copy the example environment file:
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Generate a key and paste it into `.env`:
+Generate a secure key and add it to `.env`:
 ```powershell
 .venv\Scripts\python.exe -c "import secrets; print(secrets.token_hex(32))"
 ```
@@ -247,47 +251,81 @@ SAFEGUARD_ALLOW_INSECURE_ADMIN=0
 
 ---
 
-## 8. Running the Server
+## Running the Server
 
-**Terminal 1 — Backend API:**
+**Start the backend API:**
 ```powershell
 .venv\Scripts\python.exe src/api/server.py
 ```
-Server runs on: `http://127.0.0.1:8000`
 
-**Terminal 2 — Frontend Dev Server (Atharav's module):**
+The server runs on: `http://127.0.0.1:8000`
+
+**Optional — Start the frontend dev server:**
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+
 Vite app opens at: `http://localhost:5173`
 
 ---
 
-## 9. Running Tests
+## API Reference
+
+### Route Endpoints
+
+| Method | Endpoint | Description |
+|:---:|:---|:---|
+| `GET` | `/api/health` | System health & provider status |
+| `POST` | `/api/routes/calculate` | Fetch real routes, compute safety scores & rank |
+| `POST` | `/api/routes/compare` | Compare and rank pre-computed or custom routes |
+
+### Community Report Endpoints
+
+| Method | Endpoint | Description |
+|:---:|:---|:---|
+| `POST` | `/api/reports` | Submit a community incident report with AI classification |
+| `GET` | `/api/reports` | List public reports with spatial/status filters |
+| `GET` | `/api/reports/summary` | Aggregate stats, category counts, verified breakdown |
+| `GET` | `/api/reports/{id}` | Individual public report details |
+| `POST / PATCH` | `/api/reports/{id}/review` | Admin review workflow — `X-Admin-Key` header required |
+
+### Admin Review Example
+
+```bash
+curl -X PATCH http://127.0.0.1:8000/api/reports/{id}/review \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: your-key-here" \
+  -d '{"status": "verified"}'
+```
+
+---
+
+## Running Tests
 
 ```bash
 pytest tests/
 ```
 
-**121 tests — all passing.** Breakdown:
+**121 tests — all passing.** Coverage breakdown:
 
 | Test File | Tests | Covers |
-|---|:---:|---|
+|:---|:---:|:---|
 | `test_cleaning.py` | ~10 | Data cleaning & deduplication |
 | `test_normalization.py` | ~8 | Min-max scaling edge cases |
 | `test_scoring.py` | ~20 | All 5 factor scorers |
-| `test_safety_engine.py` | 6 | Engine end-to-end + Bug 4 regression |
-| `test_report_store.py` | 8 | Store CRUD + Bug 1 regression |
+| `test_safety_engine.py` | 6 | Engine end-to-end & regression |
+| `test_report_store.py` | 8 | Store CRUD & regression |
 | `test_report_validation.py` | 8 | Report field validation |
-| `test_api_server.py` | 30 | HTTP routes + Bug 5 admin key |
+| `test_api_server.py` | 30 | HTTP routes & admin key auth |
 
 ---
 
-## 10. Example Input & Output
+## Example Input & Output
 
-### Example Input (`examples/sample_route.json`):
+### Input (`examples/sample_route.json`)
+
 ```json
 {
   "route_id": "route_101",
@@ -301,7 +339,8 @@ pytest tests/
 }
 ```
 
-### Example Output:
+### Output
+
 ```json
 {
   "route_id": "route_101",
@@ -318,7 +357,7 @@ pytest tests/
     "crime": 0.25,
     "emergency_access": 0.15,
     "infrastructure": 0.15,
-    "community": 0.2
+    "community": 0.20
   },
   "data_quality": "sufficient_data",
   "data_coverage": "supported",
@@ -329,10 +368,9 @@ pytest tests/
 
 ---
 
-## 11. Team Integration Interfaces
+## Integration Guide
 
-### How Anushka Integrates Route Data:
-Anushka's Routing Engine uses `SafetyEngineAdapter` (which is pre-wired to the live report store in production via `create_server`):
+### Using the Safety Engine Programmatically
 
 ```python
 from src.services.safety_engine import SafetyEngine
@@ -341,9 +379,8 @@ from src.models.route import Route
 engine = SafetyEngine()
 engine.load_data()
 
-# Anushka passes route information dynamically:
 route_data = Route(
-    route_id="route_m2_001",
+    route_id="route_001",
     distance_km=3.5,
     duration_minutes=14,
     coordinates=[
@@ -356,11 +393,16 @@ result = engine.analyze_route(route_data)
 print(result["safety_score"])
 ```
 
-### How Abhinav Integrates Community Reports:
-Abhinav's service submits and verifies reports — the Safety Engine picks them up automatically on the next `analyze_route()` call (no restart needed):
+### Submitting & Verifying Community Reports
+
+Verified community reports are picked up automatically on the next `analyze_route()` call — no server restart required.
 
 ```python
-# Abhinav submits a report:
+from src.services.community_service import CommunityReportService
+
+report_svc = CommunityReportService()
+
+# Submit a report
 report, meta = report_svc.submit_report({
     "description": "Broken streetlight near junction",
     "category": "poor_lighting",
@@ -369,67 +411,30 @@ report, meta = report_svc.submit_report({
     "severity": 3
 })
 
-# Admin verifies it — immediately affects safety scores:
+# Verify the report — immediately affects safety scores
 report_svc.update_review_status(report.report_id, "verified")
 ```
 
-### Admin Review Endpoints (X-Admin-Key required):
+### AI Incident Classification
 
-```bash
-# Verify a report
-curl -X PATCH http://127.0.0.1:8000/api/reports/{id}/review \
-  -H "Content-Type: application/json" \
-  -H "X-Admin-Key: your-key-here" \
-  -d '{"status": "verified"}'
-```
+The engine includes a lightweight NLP classifier that auto-categorizes submitted reports into 6 safety categories:
 
----
+| Category | Description |
+|:---|:---|
+| `poor_lighting` | Broken lamps, dark alleys, unlit zones |
+| `road_hazard` | Potholes, road damage, debris, oil spills |
+| `harassment` | Verbal abuse, stalking, intimidation |
+| `suspicious_activity` | Loitering, prowling, casing properties |
+| `infrastructure_problem` | Open manholes, waterlogging, broken sidewalks |
+| `other` | Ambiguous reports flagged for human review |
 
-## 12. Abhinav's Module: AI & Community Incident Reports
+### Duplicate Detection
 
-Abhinav provides the community intelligence and crowdsourced incident reporting system:
-- **Incident Validation**: Coordinates (-90 to 90, -180 to 180), text length (5–1000 chars), ISO 8601 timestamps, category normalization.
-- **AI Text Classification**: Lightweight, rule- and lexical-assisted NLP classifier matching 6 safety categories:
-  - `poor_lighting` — Broken lamps, dark alleys, unlit zones.
-  - `road_hazard` — Potholes, road damage, debris, oil spills.
-  - `harassment` — Catcalling, verbal abuse, stalking, intimidation.
-  - `suspicious_activity` — Loitering, casing cars/property, prowling.
-  - `infrastructure_problem` — Open manholes, severe waterlogging, broken sidewalks.
-  - `other` — Ambiguous or unclassified reports flagged for human review.
-- **Duplicate Detection**: Spatio-temporal + text similarity (Haversine < 200 m, time window < 12 h, Jaccard overlap ≥ 0.35).
-- **Report Aggregation & Analytics**: Area filtering by radius, category breakdowns, verified vs. unverified separation.
-- **Privacy & Protection**: Automatic PII exclusion; sanitized `to_public_dict()` responses.
-- **Integration with Ashutosh & Atharav**:
-  - Ashutosh's Safety Engine consumes only human-verified reports via `export_verified_reports_for_safety_engine()`.
-  - Atharav's frontend gets dedicated REST endpoints with full CORS for map pins, submission dialogs, and summary analytics.
-
-### Abhinav's REST Endpoints:
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/api/reports` | Submit community incident report with AI classification |
-| GET | `/api/reports` | List public community reports with spatial/status filters |
-| GET | `/api/reports/summary` | Aggregate stats, category counts, verified breakdown |
-| GET | `/api/reports/{id}` | Individual public report details by ID |
-| POST / PATCH | `/api/reports/{id}/review` | Admin review workflow (verified / rejected / duplicate) |
+Incoming reports are automatically screened for duplicates using:
+- **Spatial proximity**: Haversine distance < 200 m
+- **Time window**: Submission within 12 hours of an existing report
+- **Text similarity**: Jaccard overlap ≥ 0.35
 
 ---
 
-## 13. Atharav's Module: Modern Frontend / UI
-
-Atharav delivers an interactive React + Vite frontend for hackathon demonstrations:
-- **Interactive Leaflet Map**: Draws exact route geometries with OpenStreetMap tiles, origin/destination pins, and alternate routes.
-- **Contextual Safety Analytics**: Real-time visualization of all 5 safety factors.
-- **Data Coverage Transparency**: Clearly distinguishes supported coverage (Bangalore sensor buffer) from sparse coverage (fallback baseline).
-- **Route Recommendations**: Visual winner badges for Fastest, Safest, and Balanced routes.
-- **Configurable API Endpoint**: Seamless connection to Anushka's HTTP server (`http://127.0.0.1:8000`).
-
----
-
-## 👥 Team Credits
-
-| Role | Name | Responsibility |
-|:---:|:---:|:---|
-| **Member 1** | **Ashutosh** | Safety Engine — Data validation, normalization, factor scoring, weighted aggregation, security fixes |
-| **Member 2** | **Anushka** | Routing Engine — Route calculation, safety adapter, HTTP API server |
-| **Member 3** | **Atharav** | Frontend UI — React + Vite map interface, route visualization, safety analytics dashboard |
-| **Member 4** | **Abhinav** | Community Reports — Incident submission, AI classification, duplicate detection, review workflow |
+*SafeGuard is designed to complement human judgement, not replace it. All safety scores are contextual signals and should be interpreted alongside local knowledge and common sense.*

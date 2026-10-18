@@ -598,10 +598,12 @@ def run_server(host: str = "127.0.0.1", port: int = 8000):
     """Runs the API server until interrupted."""
     # Load .env file if present (python-dotenv); silently skipped when not installed.
     try:
-        from dotenv import load_dotenv
-        load_dotenv()
+        from dotenv import load_dotenv  # type: ignore[import-not-found]
     except ImportError:
-        pass  # python-dotenv not installed — rely on shell-exported env vars.
+        def load_dotenv(*_args, **_kwargs):
+            """No-op fallback for environments without python-dotenv."""
+            return False
+    load_dotenv()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     server = create_server(host=host, port=port)
     print(f"==================================================", flush=True)

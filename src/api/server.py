@@ -23,6 +23,7 @@ try:
 except ImportError:
     from http.server import HTTPServer as DefaultHTTPServer
 from http.server import BaseHTTPRequestHandler
+import mimetypes
 import sys
 import urllib.parse
 from typing import Dict, Any, Optional, List
@@ -50,6 +51,9 @@ REPORTS_SUMMARY_PATHS = {"/reports/summary", "/api/reports/summary"}
 
 REPORT_ITEM_PATTERN = re.compile(r"^/(?:api/)?reports/([a-zA-Z0-9_\-]+)$")
 REPORT_REVIEW_PATTERN = re.compile(r"^/(?:api/)?reports/([a-zA-Z0-9_\-]+)/review$")
+
+# Static frontend assets directory
+WEB_DIR = os.path.join(project_root, "web")
 
 
 class SafeGuardRequestHandler(BaseHTTPRequestHandler):
@@ -106,6 +110,21 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             headers.update(extra_headers)
         self._set_headers(status_code, content_type="application/json", extra_headers=headers)
         self.wfile.write(response_bytes)
+
+    def _serve_static_file(self, file_path: str):
+        """Serves a static frontend asset with appropriate content-type and CORS headers."""
+        content_type, _ = mimetypes.guess_type(file_path)
+        content_type = content_type or "application/octet-stream"
+        if content_type.startswith("text/") or content_type in {"application/javascript", "application/json"}:
+            content_type += "; charset=utf-8"
+        try:
+            with open(file_path, "rb") as f:
+                content = f.read()
+            self._set_headers(200, content_type=content_type, extra_headers={"Content-Length": str(len(content))})
+            self.wfile.write(content)
+        except Exception as exc:
+            logger.exception("Error serving static file %s: %s", file_path, exc)
+            self._send_error_response(500, "Error loading static asset.")
 
     def do_OPTIONS(self):
         """Handles CORS preflight requests."""
@@ -262,6 +281,16 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
                 self._send_error_response(404, f"Report '{report_id}' not found.")
                 return
             self._send_json_response(200, {"status": "success", "report": report})
+            return
+
+        # 7. Static frontend demo files
+        clean_path = path.lstrip("/")
+        if clean_path in {"", "index.html"}:
+            clean_path = "index.html"
+
+        target_file = os.path.abspath(os.path.join(WEB_DIR, clean_path))
+        if target_file.startswith(os.path.abspath(WEB_DIR)) and os.path.isfile(target_file):
+            self._serve_static_file(target_file)
             return
 
         self._send_error_response(404, f"Endpoint '{path}' not found.")
@@ -609,6 +638,7 @@ def run_server(host: str = "127.0.0.1", port: int = 8000):
     print(f"==================================================", flush=True)
     print(f" SafeGuard Routing & Safety API Server (Members 2 & 4)", flush=True)
     print(f" Running on http://{host}:{port}", flush=True)
+    print(f" Demo Website:  GET   http://{host}:{port}/", flush=True)
     print(f" Health check:  GET   http://{host}:{port}/api/health", flush=True)
     print(f" Calculate:     POST  http://{host}:{port}/api/routes/calculate", flush=True)
     print(f" Compare:       POST  http://{host}:{port}/api/routes/compare", flush=True)

@@ -23,6 +23,7 @@ try:
 except ImportError:
     from http.server import HTTPServer as DefaultHTTPServer
 from http.server import BaseHTTPRequestHandler
+
 import mimetypes
 import sys
 import urllib.parse

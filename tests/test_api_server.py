@@ -121,13 +121,28 @@ class TestAPIServer(unittest.TestCase):
         self.assertEqual(payload["status"], "error")
         self.assertEqual(payload["code"], 405)
 
-    def test_cors_options(self):
-        handler = self._create_handler("OPTIONS", "/api/routes/calculate")
+    def test_cors_options_allows_local_frontend_origin(self):
+        handler = self._create_handler(
+            "OPTIONS", "/api/routes/calculate",
+            headers={"Origin": "http://localhost:5173"}
+        )
         handler.do_OPTIONS()
 
         handler.send_response.assert_called_with(204)
-        handler.send_header.assert_any_call("Access-Control-Allow-Origin", "*")
+        handler.send_header.assert_any_call("Access-Control-Allow-Origin", "http://localhost:5173")
         handler.send_header.assert_any_call("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+
+    def test_cors_options_does_not_allow_unknown_origin(self):
+        handler = self._create_handler(
+            "OPTIONS", "/api/routes/calculate",
+            headers={"Origin": "https://untrusted.example"}
+        )
+        handler.do_OPTIONS()
+
+        handler.send_response.assert_called_with(204)
+        calls = [call.args for call in handler.send_header.call_args_list]
+        self.assertNotIn(("Access-Control-Allow-Origin", "https://untrusted.example"), calls)
+        self.assertNotIn(("Access-Control-Allow-Origin", "*"), calls)
 
     def test_calculate_routes_post(self):
         req_body = {
@@ -203,6 +218,35 @@ class TestAPIServer(unittest.TestCase):
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(payload["status"], "error")
 
+    def test_calculate_rejects_excessive_max_alternatives(self):
+        req_body = {
+            "origin": {"latitude": 12.9716, "longitude": 77.5946},
+            "destination": {"latitude": 12.9850, "longitude": 77.6100},
+            "max_alternatives": 100000
+        }
+        handler = self._create_handler("POST", "/api/routes/calculate", body=req_body)
+        handler.do_POST()
+
+        handler.send_response.assert_called_with(400)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertIn("max_alternatives", payload["message"])
+
+    def test_compare_rejects_route_with_too_many_coordinates(self):
+        req_body = {
+            "routes": [{
+                "route_id": "large-route",
+                "distance_km": 3.0,
+                "duration_minutes": 10.0,
+                "coordinates": [{"latitude": 12.97, "longitude": 77.59}] * 501
+            }]
+        }
+        handler = self._create_handler("POST", "/api/routes/compare", body=req_body)
+        handler.do_POST()
+
+        handler.send_response.assert_called_with(400)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertIn("at most 500 points", payload["message"])
+
     def test_calculate_routes_invalid_body_missing_destination(self):
         req_body = {"origin": {"latitude": 12.9716, "longitude": 77.5946}}
         handler = self._create_handler("POST", "/api/routes/calculate", body=req_body)
@@ -251,6 +295,44 @@ class TestAPIServer(unittest.TestCase):
         self.assertEqual(payload["status"], "error")
         self.assertIn("Malformed JSON", payload["message"])
 
+    def test_json_body_rejects_wrong_content_type(self):
+        handler = self._create_handler(
+            "POST", "/api/routes/calculate",
+            body={"origin": {}, "destination": {}}
+        )
+        handler.headers["Content-Type"] = "text/plain"
+        handler.do_POST()
+
+        handler.send_response.assert_called_with(415)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["status"], "error")
+
+    def test_json_body_rejects_oversized_content_length(self):
+        handler = SafeGuardRequestHandler.__new__(SafeGuardRequestHandler)
+        handler.command = "POST"
+        handler.path = "/api/routes/calculate"
+        handler.headers = {"Content-Length": str(SafeGuardRequestHandler._MAX_BODY_BYTES + 1),
+                           "Content-Type": "application/json"}
+        handler.rfile = io.BytesIO(b"")
+        handler.wfile = io.BytesIO()
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+
+        body = handler._read_json_body()
+
+        self.assertIsNone(body)
+        handler.send_response.assert_called_with(413)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload["status"], "error")
+
+    def test_error_response_has_security_headers(self):
+        handler = self._create_handler("GET", "/api/unknown")
+        handler.do_GET()
+
+        handler.send_header.assert_any_call("X-Content-Type-Options", "nosniff")
+        handler.send_header.assert_any_call("Cache-Control", "no-store")
+
     def test_not_found_endpoint_get(self):
         handler = self._create_handler("GET", "/api/unknown_path")
         handler.do_GET()
@@ -296,7 +378,7 @@ class TestAPIServer(unittest.TestCase):
         handler.send_response.assert_called_with(404)
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(payload["code"], 404)
-        self.assertIn("No road path found", payload["message"])
+        self.assertEqual(payload["message"], "No route was found between the selected locations.")
 
     def test_provider_connection_error_returns_503(self):
         mock_service = MagicMock()
@@ -313,7 +395,7 @@ class TestAPIServer(unittest.TestCase):
         handler.send_response.assert_called_with(503)
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(payload["code"], 503)
-        self.assertIn("Routing provider unreachable", payload["message"])
+        self.assertEqual(payload["message"], "Routing provider is temporarily unavailable.")
 
     def test_provider_api_error_returns_502(self):
         mock_service = MagicMock()
@@ -330,7 +412,7 @@ class TestAPIServer(unittest.TestCase):
         handler.send_response.assert_called_with(502)
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(payload["code"], 502)
-        self.assertIn("Routing provider failure", payload["message"])
+        self.assertEqual(payload["message"], "Routing provider could not complete the request.")
 
     def test_safety_adapter_error_returns_500(self):
         mock_service = MagicMock()

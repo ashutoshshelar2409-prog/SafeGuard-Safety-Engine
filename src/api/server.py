@@ -74,16 +74,30 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
         raw_params = urllib.parse.parse_qs(parsed_url.query)
         return {k: v[0] for k, v in raw_params.items() if v}
 
+    def _allowed_cors_origins(self) -> set:
+        """Return explicitly allowed browser origins; deployments should set the env var."""
+        configured = os.environ.get("SAFEGUARD_CORS_ORIGINS", "").strip()
+        if configured:
+            return {origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()}
+        # Local-development defaults only. Configure the deployed frontend origin explicitly.
+        return {"http://localhost:5173", "http://127.0.0.1:5173"}
+
     def _set_headers(
         self,
         status_code: int = 200,
         content_type: str = "application/json",
         extra_headers: Optional[Dict[str, str]] = None
     ):
-        """Sets HTTP response headers including essential CORS headers for React frontend."""
+        """Sets response and security headers; CORS is granted only to allowlisted origins."""
         self.send_response(status_code)
         self.send_header("Content-Type", content_type)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cache-Control", "no-store")
+        origin = self.headers.get("Origin", "") if getattr(self, "headers", None) else ""
+        if origin and origin.rstrip("/") in self._allowed_cors_origins():
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Key")
         if extra_headers:
@@ -108,11 +122,16 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(response_bytes)
 
     def do_OPTIONS(self):
-        """Handles CORS preflight requests."""
+        """Handles CORS preflight requests using the same origin allowlist as normal responses."""
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin", "") if getattr(self, "headers", None) else ""
+        if origin and origin.rstrip("/") in self._allowed_cors_origins():
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Key")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -130,32 +149,38 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             if not content_length_header:
                 self._send_error_response(400, "Missing Content-Length header or empty request body.")
                 return None
+            if not content_length_header.isdecimal():
+                self._send_error_response(400, "Content-Length must be a valid non-negative integer.")
+                return None
             content_length = int(content_length_header)
             if content_length <= 0:
                 self._send_error_response(400, "Request body cannot be empty. JSON payload required.")
                 return None
-            # Bug 4 fix: reject bodies that exceed the size cap before reading
             if content_length > self._MAX_BODY_BYTES:
                 self._send_error_response(
-                    400,
-                    f"Request body too large ({content_length} bytes). "
-                    f"Maximum allowed size is {self._MAX_BODY_BYTES} bytes (100 KB)."
+                    413,
+                    f"Request body exceeds the {self._MAX_BODY_BYTES}-byte limit."
                 )
                 return None
+            content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+            if content_type != "application/json":
+                self._send_error_response(415, "Content-Type must be application/json.")
+                return None
             body_bytes = self.rfile.read(content_length)
-            if not body_bytes:
-                self._send_error_response(400, "Request body is empty. JSON payload required.")
+            if len(body_bytes) != content_length:
+                self._send_error_response(400, "Request body was incomplete.")
                 return None
             body = json.loads(body_bytes.decode("utf-8"))
             if not isinstance(body, dict):
                 self._send_error_response(400, "JSON request body must be an object.")
                 return None
             return body
-        except (ValueError, json.JSONDecodeError) as exc:
-            self._send_error_response(400, f"Malformed JSON request body: {exc}")
+        except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+            self._send_error_response(400, "Malformed JSON request body.")
             return None
-        except Exception as exc:
-            self._send_error_response(400, f"Error reading request body: {exc}")
+        except Exception:
+            logger.warning("Unable to read JSON request body", exc_info=True)
+            self._send_error_response(400, "Unable to read request body.")
             return None
 
     def do_GET(self):
@@ -315,16 +340,28 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             service = self.routing_service or RoutingService()
             try:
                 preferred_ranking = body.get("preferred_ranking", "balanced")
+                if not isinstance(preferred_ranking, str) or preferred_ranking not in {"fastest", "safest", "balanced"}:
+                    self._send_error_response(400, "preferred_ranking must be fastest, safest, or balanced.")
+                    return
+                max_alternatives = body.get("max_alternatives", 3)
+                if isinstance(max_alternatives, bool) or not isinstance(max_alternatives, int) or not 1 <= max_alternatives <= 5:
+                    self._send_error_response(400, "max_alternatives must be an integer between 1 and 5.")
+                    return
+                if "alternatives" in body and not isinstance(body["alternatives"], bool):
+                    self._send_error_response(400, "alternatives must be a boolean.")
+                    return
                 result = service.calculate_routes(body, preferred_ranking=preferred_ranking)
                 self._send_json_response(200, result)
             except (ValueError, TypeError) as exc:
                 self._send_error_response(400, str(exc))
-            except NoRouteFoundError as exc:
-                self._send_error_response(404, str(exc))
-            except RoutingConnectionError as exc:
-                self._send_error_response(503, f"Routing provider unreachable: {exc}")
-            except RoutingError as exc:
-                self._send_error_response(502, f"Routing provider failure: {exc}")
+            except NoRouteFoundError:
+                self._send_error_response(404, "No route was found between the selected locations.")
+            except RoutingConnectionError:
+                logger.warning("Routing provider connection failed", exc_info=True)
+                self._send_error_response(503, "Routing provider is temporarily unavailable.")
+            except RoutingError:
+                logger.warning("Routing provider request failed", exc_info=True)
+                self._send_error_response(502, "Routing provider could not complete the request.")
             except SafetyEngineIntegrationError as exc:
                 logger.exception("Safety Engine integration error")
                 self._send_error_response(500, "Safety Engine integration error. Check server logs.")
@@ -344,17 +381,33 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
                         "Payload for /api/routes/compare requires a non-empty 'routes' array."
                     )
                     return
+                if len(routes_data) > 10:
+                    self._send_error_response(400, "A maximum of 10 routes can be compared per request.")
+                    return
+                for route_data in routes_data:
+                    if not isinstance(route_data, dict):
+                        self._send_error_response(400, "Each route must be a JSON object.")
+                        return
+                    coordinates = route_data.get("coordinates", [])
+                    if not isinstance(coordinates, list) or len(coordinates) > 500:
+                        self._send_error_response(400, "Each route must contain a coordinates array with at most 500 points.")
+                        return
                 preferred_ranking = body.get("preferred_ranking", "balanced")
+                if not isinstance(preferred_ranking, str) or preferred_ranking not in {"fastest", "safest", "balanced"}:
+                    self._send_error_response(400, "preferred_ranking must be fastest, safest, or balanced.")
+                    return
                 result = service.compare_custom_routes(routes_data, preferred_ranking=preferred_ranking)
                 self._send_json_response(200, result)
             except (ValueError, TypeError) as exc:
                 self._send_error_response(400, str(exc))
-            except NoRouteFoundError as exc:
-                self._send_error_response(404, str(exc))
-            except RoutingConnectionError as exc:
-                self._send_error_response(503, f"Routing provider unreachable: {exc}")
-            except RoutingError as exc:
-                self._send_error_response(502, f"Routing provider failure: {exc}")
+            except NoRouteFoundError:
+                self._send_error_response(404, "No route was found between the selected locations.")
+            except RoutingConnectionError:
+                logger.warning("Routing provider connection failed", exc_info=True)
+                self._send_error_response(503, "Routing provider is temporarily unavailable.")
+            except RoutingError:
+                logger.warning("Routing provider request failed", exc_info=True)
+                self._send_error_response(502, "Routing provider could not complete the request.")
             except SafetyEngineIntegrationError as exc:
                 logger.exception("Safety Engine integration error")
                 self._send_error_response(500, "Safety Engine integration error. Check server logs.")

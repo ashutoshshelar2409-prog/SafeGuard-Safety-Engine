@@ -340,8 +340,15 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
             service = self.routing_service or RoutingService()
             try:
                 preferred_ranking = body.get("preferred_ranking", "balanced")
-                if preferred_ranking not in {"fastest", "safest", "balanced"}:
+                if not isinstance(preferred_ranking, str) or preferred_ranking not in {"fastest", "safest", "balanced"}:
                     self._send_error_response(400, "preferred_ranking must be fastest, safest, or balanced.")
+                    return
+                max_alternatives = body.get("max_alternatives", 3)
+                if isinstance(max_alternatives, bool) or not isinstance(max_alternatives, int) or not 1 <= max_alternatives <= 5:
+                    self._send_error_response(400, "max_alternatives must be an integer between 1 and 5.")
+                    return
+                if "alternatives" in body and not isinstance(body["alternatives"], bool):
+                    self._send_error_response(400, "alternatives must be a boolean.")
                     return
                 result = service.calculate_routes(body, preferred_ranking=preferred_ranking)
                 self._send_json_response(200, result)
@@ -377,8 +384,16 @@ class SafeGuardRequestHandler(BaseHTTPRequestHandler):
                 if len(routes_data) > 10:
                     self._send_error_response(400, "A maximum of 10 routes can be compared per request.")
                     return
+                for route_data in routes_data:
+                    if not isinstance(route_data, dict):
+                        self._send_error_response(400, "Each route must be a JSON object.")
+                        return
+                    coordinates = route_data.get("coordinates", [])
+                    if not isinstance(coordinates, list) or len(coordinates) > 500:
+                        self._send_error_response(400, "Each route must contain a coordinates array with at most 500 points.")
+                        return
                 preferred_ranking = body.get("preferred_ranking", "balanced")
-                if preferred_ranking not in {"fastest", "safest", "balanced"}:
+                if not isinstance(preferred_ranking, str) or preferred_ranking not in {"fastest", "safest", "balanced"}:
                     self._send_error_response(400, "preferred_ranking must be fastest, safest, or balanced.")
                     return
                 result = service.compare_custom_routes(routes_data, preferred_ranking=preferred_ranking)

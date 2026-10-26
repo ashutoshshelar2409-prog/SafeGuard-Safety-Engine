@@ -218,6 +218,35 @@ class TestAPIServer(unittest.TestCase):
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(payload["status"], "error")
 
+    def test_calculate_rejects_excessive_max_alternatives(self):
+        req_body = {
+            "origin": {"latitude": 12.9716, "longitude": 77.5946},
+            "destination": {"latitude": 12.9850, "longitude": 77.6100},
+            "max_alternatives": 100000
+        }
+        handler = self._create_handler("POST", "/api/routes/calculate", body=req_body)
+        handler.do_POST()
+
+        handler.send_response.assert_called_with(400)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertIn("max_alternatives", payload["message"])
+
+    def test_compare_rejects_route_with_too_many_coordinates(self):
+        req_body = {
+            "routes": [{
+                "route_id": "large-route",
+                "distance_km": 3.0,
+                "duration_minutes": 10.0,
+                "coordinates": [{"latitude": 12.97, "longitude": 77.59}] * 501
+            }]
+        }
+        handler = self._create_handler("POST", "/api/routes/compare", body=req_body)
+        handler.do_POST()
+
+        handler.send_response.assert_called_with(400)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertIn("at most 500 points", payload["message"])
+
     def test_calculate_routes_invalid_body_missing_destination(self):
         req_body = {"origin": {"latitude": 12.9716, "longitude": 77.5946}}
         handler = self._create_handler("POST", "/api/routes/calculate", body=req_body)

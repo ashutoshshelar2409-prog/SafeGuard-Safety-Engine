@@ -349,7 +349,7 @@ class TestAPIServer(unittest.TestCase):
         handler.send_response.assert_called_with(404)
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(payload["code"], 404)
-        self.assertIn("No road path found", payload["message"])
+        self.assertEqual(payload["message"], "No route was found between the selected locations.")
 
     def test_provider_connection_error_returns_503(self):
         mock_service = MagicMock()
@@ -366,7 +366,7 @@ class TestAPIServer(unittest.TestCase):
         handler.send_response.assert_called_with(503)
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(payload["code"], 503)
-        self.assertIn("Routing provider unreachable", payload["message"])
+        self.assertEqual(payload["message"], "Routing provider is temporarily unavailable.")
 
     def test_provider_api_error_returns_502(self):
         mock_service = MagicMock()
@@ -383,7 +383,7 @@ class TestAPIServer(unittest.TestCase):
         handler.send_response.assert_called_with(502)
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(payload["code"], 502)
-        self.assertIn("Routing provider failure", payload["message"])
+        self.assertEqual(payload["message"], "Routing provider could not complete the request.")
 
     def test_safety_adapter_error_returns_500(self):
         mock_service = MagicMock()
